@@ -1,6 +1,5 @@
 // navigation/types.ts
 
-// Rutas para views/auth
 export type AuthStackParamList = {
   Welcome: undefined;
   Login: undefined;
@@ -8,14 +7,18 @@ export type AuthStackParamList = {
   RegistrationStep2: undefined;
 };
 
-// Rutas para views/aprendiz
+// Actualizamos las rutas del Aprendiz con lo que pide tu diseño
 export type AprendizStackParamList = {
   Dashboard: undefined;
+  Notifications: undefined;
   Profile: undefined;
+  LogResult: undefined;
+  Stats: undefined;
+  MisPruebas: undefined;
 };
 
-// Rutas para views/entrenador
 export type EntrenadorStackParamList = {
   Dashboard: undefined;
   ManageAthletes: undefined;
+  CoachReports: undefined;
 };
