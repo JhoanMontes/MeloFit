@@ -44,45 +44,65 @@ export default function Dashboard({ navigation }: Props) {
     >
       <View className="flex-1 bg-slate-900/60 justify-end">
         <Pressable className="flex-1" onPress={() => setShowProfileModal(false)} />
+
         <View className="bg-white rounded-t-[40px] p-6 pb-10 shadow-2xl">
-          <View className="items-center mb-6">
+
+          {/* Handle */}
+          <View className="items-center mb-4">
             <View className="w-12 h-1.5 bg-slate-200 rounded-full" />
           </View>
-          <View className="flex-row justify-between items-center mb-6">
-            <Text className="text-2xl font-bold text-slate-900 tracking-tight">Tu Cuenta</Text>
-            <Pressable onPress={() => setShowProfileModal(false)} className="p-2 bg-slate-100 rounded-full">
+
+          {/* Header */}
+          <View className="flex-row justify-between items-center mb-8">
+            <Text className="text-2xl font-bold text-slate-900 tracking-tight">
+              Tu Cuenta
+            </Text>
+
+            <Pressable
+              onPress={() => setShowProfileModal(false)}
+              className="p-2 bg-slate-100 rounded-full active:bg-slate-200"
+            >
               <X size={20} color="#64748b" />
             </Pressable>
           </View>
-          {/* User Info */}
-          <View className="flex-row items-center bg-slate-50 p-4 rounded-3xl mb-6 border border-slate-100">
+
+          {/* User Info (Clickable) */}
+          <Pressable
+            onPress={() => {
+              setShowProfileModal(false);
+              navigation.navigate("Profile");
+            }}
+            className="flex-row items-center bg-slate-50 p-4 rounded-3xl mb-8 border border-slate-100 active:bg-slate-100"
+          >
             <View className="w-16 h-16 bg-blue-100 rounded-full items-center justify-center mr-4 border-2 border-white">
               <User size={30} color="#2563EB" />
             </View>
+
             <View>
-              <Text className="text-xl font-bold text-slate-900">Alex Johnson</Text>
-              <Text className="text-slate-500 font-medium">Atleta • Nivel Intermedio</Text>
+              <Text className="text-xl font-bold text-slate-900">
+                Alex Johnson
+              </Text>
+              <Text className="text-slate-500 font-medium mt-0.5">
+                Atleta • Nivel Intermedio
+              </Text>
             </View>
-          </View>
-          {/* Actions */}
-          <View className="space-y-3">
-            <Pressable
-              onPress={() => { setShowProfileModal(false); navigation.navigate("Profile"); }}
-              className="w-full bg-white border border-slate-200 py-4 rounded-2xl flex-row items-center justify-between px-6 active:bg-slate-50"
-            >
-              <Text className="text-slate-700 font-bold text-base">Ver Perfil Completo</Text>
-              <ChevronRight size={20} color="#94a3b8" />
-            </Pressable>
-            <Pressable
-              onPress={() => { setShowProfileModal(false); signOut(); }}
-              className="w-full bg-red-50 py-4 rounded-2xl flex-row items-center justify-center space-x-2 active:bg-red-100"
-            >
-              <LogOut size={20} color="#DC2626" />
-              <Text className="text-red-600 font-bold text-base">Cerrar Sesión</Text>
-            </Pressable>
-          </View>
+          </Pressable>
+
+          {/* Logout */}
+          <Pressable
+            onPress={() => { setShowProfileModal(false); signOut(); }}
+            className="w-full bg-red-50 py-4 rounded-2xl flex-row items-center justify-center space-x-2 active:bg-red-100"
+          >
+            <LogOut size={20} color="#DC2626" />
+            <Text className="text-red-600 font-bold text-base">
+              Cerrar Sesión
+            </Text>
+          </Pressable>
+
         </View>
       </View>
+
+
     </Modal>
   );
 
