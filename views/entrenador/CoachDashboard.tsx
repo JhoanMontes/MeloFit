@@ -152,15 +152,15 @@ export default function CoachDashboard({ navigation }: Props) {
             </Pressable>
 
             {/* Botón Gestionar Pruebas */}
-            <Pressable
-              onPress={() => navigation.navigate('AdminCreateTest')}
-              className="bg-white rounded-[24px] p-5 w-[48%] shadow-sm border border-slate-100 active:scale-95 transition-transform"
+           <Pressable
+              onPress={() => navigation.navigate('ManageTests')} // <--- CAMBIO AQUÍ
+              className="bg-white rounded-2xl p-5 w-[48%] shadow-sm active:bg-gray-50"
             >
-              <View className="bg-blue-50 p-3.5 rounded-2xl self-start mb-4">
-                <Settings size={24} color="#2563EB" />
+              <View className="bg-blue-100 p-3 rounded-xl self-start mb-3">
+                <Settings size={22} color="#2563EB" />
               </View>
-              <Text className="text-slate-900 font-bold text-lg">Pruebas</Text>
-              <Text className="text-slate-500 text-xs font-medium mt-1">Crear y Editar</Text>
+              <Text className="text-gray-900 font-bold text-base">Pruebas</Text>
+              <Text className="text-xs text-gray-500 mt-1">Crear y editar</Text>
             </Pressable>
           </View>
 

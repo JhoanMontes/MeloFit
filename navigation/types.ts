@@ -1,6 +1,5 @@
 // navigation/types.ts
 
-// --- RUTAS DE AUTENTICACIÓN ---
 export type AuthStackParamList = {
   Welcome: undefined;
   Login: undefined;
@@ -8,7 +7,6 @@ export type AuthStackParamList = {
   RegistrationStep2: undefined;
 };
 
-// --- RUTAS DEL ATLETA (APRENDIZ) ---
 export type AprendizStackParamList = {
   Dashboard: undefined;
   Notifications: undefined;
@@ -18,13 +16,14 @@ export type AprendizStackParamList = {
   MisPruebas: undefined;
 };
 
-// --- RUTAS DEL ENTRENADOR ---
+// --- RUTAS DEL ENTRENADOR (Actualizado) ---
 export type EntrenadorStackParamList = {
   Dashboard: undefined;
   Notifications: undefined;
-  Profile: undefined;      // Perfil del entrenador
-  CoachReports: undefined; // Generar reportes
-  AdminCreateTest: undefined; // Gestionar pruebas
-  SendFeedback: undefined; // Dar feedback a un atleta
-  AssignTestStep1: undefined; // Asignar prueba (Paso 1)
+  Profile: undefined;
+  CoachReports: undefined;
+  ManageTests: undefined;    
+  AdminCreateTest: undefined; 
+  SendFeedback: undefined;
+  AssignTestStep1: undefined;
 };
