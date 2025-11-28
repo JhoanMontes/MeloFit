@@ -1,97 +1,91 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { supabase } from "../lib/supabase";
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+// import { supabase } from "../lib/supabase"; // COMENTADO: Backend real
 
-type Role = "guest" | "aprendiz" | "entrenador";
+// Definimos los roles que espera tu App.tsx
+type UserRole = 'guest' | 'aprendiz' | 'entrenador';
 
-interface AuthContextProps {
-  user: any;
-  role: Role;
-  loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, role: Role) => Promise<void>;
-  logout: () => Promise<void>;
+interface AuthContextType {
+  role: UserRole;
+  // user: any; // COMENTADO: Datos reales de usuario
+  // loading: boolean; // COMENTADO
+  
+  // --- FUNCIONES MOCK (Para Diseño) ---
+  signIn: (role: 'aprendiz' | 'entrenador') => void;
+  signOut: () => void;
+
+  // --- FUNCIONES SUPABASE (COMENTADAS) ---
+  // login: (email: string, password: string) => Promise<void>;
+  // register: (email: string, password: string, role: UserRole) => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextProps | null>(null);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<any>(null);
-  const [role, setRole] = useState<Role>("guest");
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [role, setRole] = useState<UserRole>('guest');
+  // const [user, setUser] = useState<any>(null);
+  // const [loading, setLoading] = useState(true);
 
-  // -------------------------
-  // CHECK USER SESSION ON START
-  // -------------------------
+  // --- MODO DISEÑO: Funciones Simples ---
+  const signIn = (newRole: 'aprendiz' | 'entrenador') => {
+    console.log("Simulando login como:", newRole);
+    setRole(newRole); // ¡Esto dispara la navegación en App.tsx!
+  };
+
+  const signOut = () => {
+    setRole('guest');
+  };
+
+  /* ------------------------------------------------------------
+     --- CÓDIGO SUPABASE (GUARDADO PARA LUEGO) ---
+     ------------------------------------------------------------
+  
+  // Verificar sesión al inicio
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
       const sessionUser = data?.session?.user || null;
-
       setUser(sessionUser);
-
+      
       if (sessionUser) {
-        // get role from metadata
+        // Obtenemos el rol desde los metadatos del usuario
         const userRole = sessionUser.user_metadata?.role || "guest";
         setRole(userRole);
       }
-
       setLoading(false);
     };
-
     checkSession();
   }, []);
 
-  // -------------------------
-  // LOGIN
-  // -------------------------
   const login = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-
     setUser(data.user);
+    // Actualizamos el rol basado en la BD
     setRole(data.user.user_metadata?.role || "guest");
   };
 
-  // -------------------------
-  // REGISTER
-  // -------------------------
-  const register = async (email: string, password: string, role: Role) => {
+  const register = async (email: string, password: string, role: UserRole) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { role }, // metadata
-      },
+      options: { data: { role } },
     });
-
     if (error) throw error;
-
     setUser(data.user);
     setRole(role);
   };
-
-  // -------------------------
-  // LOGOUT
-  // -------------------------
-  const logout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setRole("guest");
-  };
+  ------------------------------------------------------------ */
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, login, register, logout }}>
+    // Pasamos solo lo que usamos ahora. Cuando actives Supabase, descomenta user, login, register.
+    <AuthContext.Provider value={{ role, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used inside AuthProvider");
+  if (!context) throw new Error("useAuth debe usarse dentro de un AuthProvider");
   return context;
-};
+}

@@ -6,7 +6,8 @@ import { EntrenadorStackParamList } from "./types";
 // Importamos las vistas reales
 import CoachDashboard from "../views/entrenador/CoachDashboard";
 import AdminCreateTest from "../views/entrenador/AdminCreateTest";
-import ManageTests from "../views/entrenador/ManageTests"; // <--- IMPORTAR
+import ManageTests from "../views/entrenador/ManageTests"; 
+import CreateGroup from "../views/entrenador/CreateGroup";
 
 // Placeholder
 const PlaceholderScreen = ({ route }: any) => (
@@ -32,6 +33,9 @@ export default function EntrenadorStack() {
       {/* Pantalla de formulario (AdminCreateTest) */}
       <Stack.Screen name="AdminCreateTest" component={AdminCreateTest} />
       
+
+       <Stack.Screen name="CreateGroup" component={CreateGroup} />
+
       <Stack.Screen name="CoachReports" component={PlaceholderScreen} options={{ headerShown: true, title: 'Reportes' }} />
       <Stack.Screen name="SendFeedback" component={PlaceholderScreen} options={{ headerShown: true, title: 'Enviar Feedback' }} />
       <Stack.Screen name="AssignTestStep1" component={PlaceholderScreen} options={{ headerShown: true, title: 'Asignar Prueba' }} />

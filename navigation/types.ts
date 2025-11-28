@@ -30,4 +30,5 @@ export type EntrenadorStackParamList = {
   AdminCreateTest: undefined; 
   SendFeedback: undefined;
   AssignTestStep1: undefined;
+   CreateGroup: undefined;
 };

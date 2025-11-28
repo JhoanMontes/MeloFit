@@ -7,7 +7,9 @@ import { AprendizStackParamList } from "./types";
 import Dashboard from "../views/aprendiz/Dashboard";
 import MyProfile from "../views/aprendiz/MyProfile";
 import Notifications from "../views/aprendiz/Notifications";
-import MisPruebas from "../views/aprendiz/MisPruebas"; 
+import MisPruebas from "../views/aprendiz/MisPruebas";
+import StatsScreen from "../views/aprendiz/StatsScreen";
+import LogResultScreen from "../views/aprendiz/LogResultScreen";
 
 // Placeholder
 const PlaceholderScreen = ({ route }: any) => (
@@ -33,9 +35,11 @@ export default function AprendizStack() {
 
       {/* Otras pantallas */}
       <Stack.Screen name="Notifications" component={Notifications} />
-      <Stack.Screen name="LogResult" component={PlaceholderScreen} options={{ headerShown: true }} />
-      <Stack.Screen name="Stats" component={PlaceholderScreen} options={{ headerShown: true }} />
-         <Stack.Screen name="MisPruebas" component={MisPruebas} />
+      <Stack.Screen name="LogResult" component={LogResultScreen} />
+
+      <Stack.Screen name="Stats" component={StatsScreen} />
+
+      <Stack.Screen name="MisPruebas" component={MisPruebas} />
 
     </Stack.Navigator>
   );
