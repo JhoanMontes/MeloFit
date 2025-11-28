@@ -4,7 +4,11 @@ export type AuthStackParamList = {
   Welcome: undefined;
   Login: undefined;
   RegistrationStep1: undefined;
-  RegistrationStep2: undefined;
+  RegistrationStep2: {
+    nombre_completo: string;
+    email: string;
+    no_documento: string;
+  };
 };
 
 export type AprendizStackParamList = {
