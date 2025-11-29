@@ -86,7 +86,7 @@ export default function CoachReports({ navigation }: Props) {
 
   return (
     <View className="flex-1 bg-[#F5F5F7]">
-      <SafeAreaView className="flex-1" edges={['top']}>
+       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
           
           {/* --- HEADER --- */}

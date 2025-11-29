@@ -48,7 +48,7 @@ export default function MyProfile({ navigation }: Props) {
     <View className="flex-1 bg-slate-50">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      <SafeAreaView className="flex-1" edges={['top']}>
+       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1"

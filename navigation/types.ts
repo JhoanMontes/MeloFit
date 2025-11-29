@@ -29,12 +29,12 @@ export type EntrenadorStackParamList = {
   ManageTests: undefined;
   AdminCreateTest: undefined;
   CreateGroup: undefined;
-  
+
   AssignTestStep1: undefined;
   AssignTestStep2: { test: any };
 
-   FeedbackResults: undefined; 
-  SendFeedback: { result: any } | undefined; 
+  FeedbackResults: undefined;
+  SendFeedback: { result: any } | undefined;
 
   GroupDetail: { group: any };
 };

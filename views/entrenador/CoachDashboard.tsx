@@ -107,7 +107,7 @@ export default function CoachDashboard({ navigation }: Props) {
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <ProfileModal />
       
-      <SafeAreaView edges={['top']} className="flex-1">
+      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
 
         {/* HEADER */}
         <View className="px-6 pb-4 mt-3 flex-row items-center justify-between">

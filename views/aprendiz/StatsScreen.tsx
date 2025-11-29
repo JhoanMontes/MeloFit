@@ -31,7 +31,7 @@ export default function StatsScreen({ navigation }: Props) {
     <View className="flex-1 bg-slate-50">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
-      <SafeAreaView className="flex-1" edges={['top']}>
+       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         
         {/* --- HEADER --- */}
         <View className="px-6 pt-4 pb-2">

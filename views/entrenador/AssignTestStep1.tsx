@@ -88,7 +88,7 @@ export default function AssignTestStep1({ navigation }: Props) {
     <View className="flex-1 bg-slate-50">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
-      <SafeAreaView className="flex-1" edges={['top']}>
+       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         
         {/* --- HEADER --- */}
         <View className="px-6 pt-6 pb-4">

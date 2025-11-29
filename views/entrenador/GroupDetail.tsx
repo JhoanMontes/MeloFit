@@ -85,7 +85,7 @@ export default function GroupDetail({ navigation, route }: Props) {
   return (
     <View className="flex-1 bg-[#F5F5F7]">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <SafeAreaView className="flex-1" edges={['top']}>
+       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         
         {/* --- HEADER --- */}
         <View className="bg-white shadow-sm border-b border-gray-100 px-6 pt-4 pb-4">

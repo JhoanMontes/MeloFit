@@ -111,7 +111,7 @@ export default function Dashboard({ navigation }: Props) {
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <ProfileModal />
 
-      <SafeAreaView edges={['top']} className="flex-1">
+      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
 
         {/* --- HEADER --- */}
         <View className="px-6 pb-4 mt-3 flex-row items-center justify-between">
@@ -231,7 +231,12 @@ export default function Dashboard({ navigation }: Props) {
       {/* --- BOTTOM NAVIGATION CORREGIDO (Estilo Estándar 4 Botones) --- */}
       <View
         className="absolute bottom-0 w-full bg-white border-t border-slate-100 flex-row justify-around items-center"
-        style={{ paddingBottom: Math.max(insets.bottom, 20), paddingTop: 12 }}
+      style={{ 
+          paddingBottom: Math.max(insets.bottom, 20), 
+          paddingTop: 12,
+          flexDirection: 'row',
+          justifyContent: 'space-around'
+        }}
       >
 
         {/* 1. Inicio (Activo) */}

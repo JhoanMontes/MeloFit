@@ -79,7 +79,7 @@ export default function RegistrationStep2({ navigation, route }: Props) {
     <View className="flex-1 bg-white">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      <SafeAreaView className="flex-1" edges={["top", "left", "right"]}>
+       <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right"]}>
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1"

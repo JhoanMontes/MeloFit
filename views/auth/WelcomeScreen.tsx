@@ -1,5 +1,7 @@
+// views/auth/WelcomeScreen.tsx
 import React from "react";
-import { View, Text, Pressable, SafeAreaView, StatusBar } from "react-native";
+import { View, Text, Pressable, StatusBar } from "react-native"; // 
+import { SafeAreaView } from "react-native-safe-area-context"; // 
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Dumbbell } from "lucide-react-native";
 
@@ -12,7 +14,8 @@ export default function WelcomeScreen({ navigation }: Props) {
     <View className="flex-1 bg-white">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      <SafeAreaView className="flex-1">
+       {/* USO CON STYLE NATIVO */}
+       <SafeAreaView style={{ flex: 1 }}>
         <View className="flex-1 justify-between px-6 py-6">
 
           {/* --- SECCIÓN SUPERIOR --- */}
@@ -34,13 +37,9 @@ export default function WelcomeScreen({ navigation }: Props) {
             </View>
           </View>
 
-          {/* --- SECCIÓN INFERIOR (Botones Corregidos) --- */}
+          {/* --- SECCIÓN INFERIOR --- */}
           <View className="w-full space-y-4 pb-2">
             
-            {/* SOLUCIÓN: Usamos clases 'active:' en lugar de la función.
-                active:opacity-90 -> Cambia opacidad al presionar
-                active:scale-[0.98] -> Reduce tamaño al presionar
-            */}
             <Pressable
               onPress={() => navigation.navigate("RegistrationStep1")}
               className="w-full bg-blue-600 rounded-2xl h-14 justify-center items-center shadow-lg  active:opacity-90 active:scale-[0.98]"
@@ -50,7 +49,6 @@ export default function WelcomeScreen({ navigation }: Props) {
               </Text>
             </Pressable>
 
-            {/* Botón Secundario */}
             <Pressable
               onPress={() => navigation.navigate("Login")}
               className="w-full bg-white border border-slate-200 rounded-2xl h-14 justify-center items-center active:bg-slate-50 active:border-slate-300 mt-4"

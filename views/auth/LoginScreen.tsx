@@ -5,13 +5,14 @@ import {
   Text, 
   TextInput, 
   Pressable, 
-  Alert, 
-  SafeAreaView, 
   StatusBar, 
+  Alert,
   KeyboardAvoidingView, 
   Platform,
   ScrollView 
+
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context"; // 
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ArrowLeft, Dumbbell, Check } from "lucide-react-native";
 import { AuthStackParamList } from "../../navigation/types";
@@ -29,13 +30,14 @@ export default function LoginScreen({ navigation }: Props) {
 
   const [isCoach, setIsCoach] = useState(false);
 
-  const handleLogin = () => {
-    // Validación básica opcional
-    // if (!formData.email || !formData.password) {
-    //   Alert.alert("Error", "Por favor completa todos los campos");
-    //   return;
+ const handleLogin = () => {
+   
+    // if (!formData.email.trim() || !formData.password.trim()) {
+    //   Alert.alert("Campos Incompletos", "Por favor ingresa tu correo y contraseña.");
+    //   return; 
     // }
 
+  
     if (isCoach) {
       signIn('entrenador');
     } else {
@@ -47,8 +49,9 @@ export default function LoginScreen({ navigation }: Props) {
     <View className="flex-1 bg-white">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
-      <SafeAreaView className="flex-1">
-        {/* KeyboardAvoidingView asegura que el teclado no tape el formulario */}
+       {/* USO CON STYLE NATIVO PARA EVITAR ERRORES VISUALES */}
+       <SafeAreaView style={{ flex: 1 }}>
+        
         <KeyboardAvoidingView 
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1"
@@ -122,7 +125,7 @@ export default function LoginScreen({ navigation }: Props) {
                 </Pressable>
               </View>
 
-              {/* Coach Selector (Checkbox Mejorado) */}
+              {/* Coach Selector */}
               <Pressable 
                 onPress={() => setIsCoach(!isCoach)}
                 className={`flex-row items-center mt-4 p-4 rounded-2xl border transition-colors ${

@@ -96,7 +96,7 @@ export default function AdminCreateTest({ navigation }: Props) {
     <View className="flex-1 bg-slate-50">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
-      <SafeAreaView edges={['top']} className="flex-1">
+      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1"
