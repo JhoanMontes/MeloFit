@@ -3,11 +3,22 @@ import { View, Text } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { EntrenadorStackParamList } from "./types";
 
-// Importamos las vistas reales
+// Vistas
 import CoachDashboard from "../views/entrenador/CoachDashboard";
 import AdminCreateTest from "../views/entrenador/AdminCreateTest";
-import ManageTests from "../views/entrenador/ManageTests"; 
+import ManageTests from "../views/entrenador/ManageTests";
 import CreateGroup from "../views/entrenador/CreateGroup";
+import AssignTestStep1 from "../views/entrenador/AssignTestStep1";
+import AssignTestStep2 from "../views/entrenador/AssignTestStep2";
+import CoachReports from "../views/entrenador/CoachReports";
+import FeedbackResults from "../views/entrenador/FeedbackResults";
+
+
+import Notifications from "../views/aprendiz/Notifications";
+import MyProfile from "../views/aprendiz/MyProfile";
+
+
+import GroupDetail from "../views/entrenador/GroupDetail";
 
 // Placeholder
 const PlaceholderScreen = ({ route }: any) => (
@@ -21,26 +32,28 @@ const Stack = createNativeStackNavigator<EntrenadorStackParamList>();
 
 export default function EntrenadorStack() {
   return (
-    <Stack.Navigator 
-      initialRouteName="Dashboard"
-      screenOptions={{ headerShown: false }}
-    >
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      
       <Stack.Screen name="Dashboard" component={CoachDashboard} />
-      
-      {/* Nueva pantalla de lista */}
       <Stack.Screen name="ManageTests" component={ManageTests} />
-
-      {/* Pantalla de formulario (AdminCreateTest) */}
       <Stack.Screen name="AdminCreateTest" component={AdminCreateTest} />
+      <Stack.Screen name="CreateGroup" component={CreateGroup} />
       
+      <Stack.Screen name="AssignTestStep1" component={AssignTestStep1} />
+      <Stack.Screen name="AssignTestStep2" component={AssignTestStep2} />
 
-       <Stack.Screen name="CreateGroup" component={CreateGroup} />
+      <Stack.Screen name="CoachReports" component={CoachReports} />
+      
+ 
+      <Stack.Screen name="FeedbackResults" component={FeedbackResults} />
 
-      <Stack.Screen name="CoachReports" component={PlaceholderScreen} options={{ headerShown: true, title: 'Reportes' }} />
+      <Stack.Screen name="Notifications" component={Notifications} />
+      <Stack.Screen name="Profile" component={MyProfile} options={{ headerShown: false }} />
+
       <Stack.Screen name="SendFeedback" component={PlaceholderScreen} options={{ headerShown: true, title: 'Enviar Feedback' }} />
-      <Stack.Screen name="AssignTestStep1" component={PlaceholderScreen} options={{ headerShown: true, title: 'Asignar Prueba' }} />
-      <Stack.Screen name="Notifications" component={PlaceholderScreen} options={{ headerShown: true, title: 'Notificaciones' }} />
-      <Stack.Screen name="Profile" component={PlaceholderScreen} options={{ headerShown: true, title: 'Perfil' }} />
+
+       <Stack.Screen name="GroupDetail" component={GroupDetail} />
+
     </Stack.Navigator>
   );
 }

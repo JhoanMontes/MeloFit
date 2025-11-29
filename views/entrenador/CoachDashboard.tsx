@@ -42,12 +42,12 @@ export default function CoachDashboard({ navigation }: Props) {
   const recentResults = pendingResults.slice(0, 3);
   
   const groups = [
-    { name: 'Fuerza Avanzada', members: 12, color: 'bg-indigo-100', iconColor: '#4338ca' },
-    { name: 'Principiantes', members: 8, color: 'bg-emerald-100', iconColor: '#059669' },
-    { name: 'Resistencia', members: 6, color: 'bg-orange-100', iconColor: '#ea580c' }
+    { id: 1, name: 'Fuerza Avanzada', members: 12, color: 'bg-indigo-100', iconColor: '#4338ca' },
+    { id: 2, name: 'Principiantes', members: 8, color: 'bg-emerald-100', iconColor: '#059669' },
+    { id: 3, name: 'Resistencia', members: 6, color: 'bg-orange-100', iconColor: '#ea580c' }
   ];
 
-  // Componente Modal Extraído para limpieza
+  // Componente Modal
   const ProfileModal = () => (
     <Modal 
       animationType="fade" 
@@ -57,25 +57,39 @@ export default function CoachDashboard({ navigation }: Props) {
     >
       <View className="flex-1 bg-slate-900/60 justify-end">
         <Pressable className="flex-1" onPress={() => setShowProfileModal(false)} />
+        
         <View className="bg-white rounded-t-[40px] p-6 pb-10 shadow-2xl">
+          
+          {/* Handle bar */}
           <View className="items-center mb-6">
             <View className="w-12 h-1.5 bg-slate-200 rounded-full" />
           </View>
+
           <View className="flex-row justify-between items-center mb-6">
             <Text className="text-2xl font-bold text-slate-900 tracking-tight">Tu Cuenta</Text>
-            <Pressable onPress={() => setShowProfileModal(false)} className="p-2 bg-slate-100 rounded-full">
+            <Pressable onPress={() => setShowProfileModal(false)} className="p-2 bg-slate-100 rounded-full active:bg-slate-200">
               <X size={20} color="#64748b" />
             </Pressable>
           </View>
-          <View className="flex-row items-center bg-slate-50 p-4 rounded-3xl mb-6 border border-slate-100">
+
+          {/* User Info Card - CLICKEABLE -> Perfil */}
+          <Pressable 
+            onPress={() => {
+              setShowProfileModal(false);
+              navigation.navigate("Profile");
+            }}
+            className="flex-row items-center bg-slate-50 p-4 rounded-3xl mb-6 border border-slate-100 active:bg-slate-100"
+          >
             <View className="w-16 h-16 bg-blue-100 rounded-full items-center justify-center mr-4 border-2 border-white">
               <User size={30} color="#2563EB" />
             </View>
-            <View>
+            <View className="flex-1">
               <Text className="text-xl font-bold text-slate-900">Michael Torres</Text>
               <Text className="text-slate-500 font-medium">Head Coach</Text>
             </View>
-          </View>
+            <ChevronRight size={20} color="#94a3b8" />
+          </Pressable>
+
           <Pressable 
             onPress={() => { setShowProfileModal(false); signOut(); }} 
             className="w-full bg-red-50 py-4 rounded-2xl flex-row items-center justify-center active:bg-red-100"
@@ -120,7 +134,7 @@ export default function CoachDashboard({ navigation }: Props) {
 
         <ScrollView 
           className="flex-1 px-6" 
-          contentContainerStyle={{ paddingBottom: 140 }} // Aumentado para que el FAB no tape el último item
+          contentContainerStyle={{ paddingBottom: 140 }} 
           showsVerticalScrollIndicator={false}
         >
 
@@ -137,7 +151,7 @@ export default function CoachDashboard({ navigation }: Props) {
               <Text className="text-slate-500 text-xs font-medium mt-1">Exportar CSV/PDF</Text>
             </Pressable>
             <Pressable 
-              onPress={() => navigation.navigate('AdminCreateTest')} 
+              onPress={() => navigation.navigate('ManageTests')} 
               className="bg-white rounded-[24px] p-5 w-[48%] shadow-sm border border-slate-100 active:scale-95 transition-transform"
             >
               <View className="bg-blue-100 p-3.5 rounded-2xl self-start mb-4">
@@ -157,7 +171,9 @@ export default function CoachDashboard({ navigation }: Props) {
                 </View>
                 <Text className="text-slate-900 text-lg font-bold">Por Revisar</Text>
               </View>
-              <Pressable>
+              
+              {/* BOTÓN ARREGLADO: Navega a FeedbackResults */}
+              <Pressable onPress={() => navigation.navigate('FeedbackResults')}>
                 <Text className="text-blue-600 text-sm font-bold">Ver todo</Text>
               </Pressable>
             </View>
@@ -181,7 +197,7 @@ export default function CoachDashboard({ navigation }: Props) {
                     </Text>
                   </View>
                   <Pressable 
-                    onPress={() => navigation.navigate('SendFeedback')} 
+                    onPress={() => navigation.navigate('SendFeedback', { result: r })} 
                     className="bg-white border border-blue-100 rounded-xl w-10 h-10 items-center justify-center shadow-sm active:bg-blue-50"
                   >
                     <ChevronRight size={20} color="#2563EB" />
@@ -191,12 +207,12 @@ export default function CoachDashboard({ navigation }: Props) {
             </View>
           </View>
 
-          {/* --- MIS GRUPOS (Con Botón Crear) --- */}
+          {/* Mis Grupos */}
           <View className="bg-white rounded-[32px] shadow-sm border border-slate-100 p-6">
             <View className="flex-row items-center justify-between mb-5">
               <Text className="text-slate-900 text-lg font-bold">Mis Grupos</Text>
 
-              {/* BOTÓN CREAR GRUPO MEJORADO */}
+              {/* Botón Crear Grupo */}
               <Pressable
                 onPress={() => navigation.navigate('CreateGroup')}
                 className="flex-row items-center bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100 active:bg-blue-100"
@@ -209,7 +225,8 @@ export default function CoachDashboard({ navigation }: Props) {
             <View className="space-y-3">
               {groups.map((group, index) => (
                 <Pressable 
-                  key={index} 
+                  key={index}
+                  onPress={() => navigation.navigate('GroupDetail', { group })}
                   className="flex-row items-center p-3 bg-slate-50 rounded-2xl border border-slate-100 active:bg-slate-100"
                 >
                   <View className={`${group.color} p-3 rounded-xl mr-4`}>
@@ -228,7 +245,7 @@ export default function CoachDashboard({ navigation }: Props) {
         </ScrollView>
       </SafeAreaView>
 
-      {/* FAB FLOTANTE */}
+      {/* FAB */}
       <Pressable 
         onPress={() => navigation.navigate('AssignTestStep1')} 
         style={{ bottom: Math.max(insets.bottom, 24) }} 
