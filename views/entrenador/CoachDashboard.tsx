@@ -60,7 +60,6 @@ export default function CoachDashboard({ navigation }: Props) {
         
         <View className="bg-white rounded-t-[40px] p-6 pb-10 shadow-2xl">
           
-          {/* Handle bar */}
           <View className="items-center mb-6">
             <View className="w-12 h-1.5 bg-slate-200 rounded-full" />
           </View>
@@ -72,7 +71,6 @@ export default function CoachDashboard({ navigation }: Props) {
             </Pressable>
           </View>
 
-          {/* User Info Card - CLICKEABLE -> Perfil */}
           <Pressable 
             onPress={() => {
               setShowProfileModal(false);
@@ -92,9 +90,9 @@ export default function CoachDashboard({ navigation }: Props) {
 
           <Pressable 
             onPress={() => { setShowProfileModal(false); signOut(); }} 
-            className="w-full bg-red-50 py-4 rounded-2xl flex-row items-center justify-center active:bg-red-100"
+            className="w-full bg-red-50 py-4 rounded-2xl flex-row items-center justify-center active:bg-red-100 gap-2"
           >
-            <LogOut size={20} color="#DC2626" style={{ marginRight: 8 }} />
+            <LogOut size={20} color="#DC2626" />
             <Text className="text-red-600 font-bold text-base">Cerrar Sesión</Text>
           </Pressable>
         </View>
@@ -138,11 +136,11 @@ export default function CoachDashboard({ navigation }: Props) {
           showsVerticalScrollIndicator={false}
         >
 
-          {/* Quick Actions */}
+          {/* Quick Actions - CORREGIDO: Eliminamos scale-95 y transition-transform */}
           <View className="flex-row justify-between mb-6">
             <Pressable 
               onPress={() => navigation.navigate('CoachReports')} 
-              className="bg-white rounded-[24px] p-5 w-[48%] shadow-sm border border-slate-100 active:scale-95 transition-transform"
+              className="bg-white rounded-[24px] p-5 w-[48%] shadow-sm border border-slate-100 active:opacity-60"
             >
               <View className="bg-indigo-50 p-3.5 rounded-2xl self-start mb-4">
                 <FileText size={24} color="#4f46e5" />
@@ -150,9 +148,10 @@ export default function CoachDashboard({ navigation }: Props) {
               <Text className="text-slate-900 font-bold text-lg">Reportes</Text>
               <Text className="text-slate-500 text-xs font-medium mt-1">Exportar CSV/PDF</Text>
             </Pressable>
+
             <Pressable 
               onPress={() => navigation.navigate('ManageTests')} 
-              className="bg-white rounded-[24px] p-5 w-[48%] shadow-sm border border-slate-100 active:scale-95 transition-transform"
+              className="bg-white rounded-[24px] p-5 w-[48%] shadow-sm border border-slate-100 active:opacity-60"
             >
               <View className="bg-blue-100 p-3.5 rounded-2xl self-start mb-4">
                 <Settings size={24} color="#2563EB" />
@@ -172,7 +171,6 @@ export default function CoachDashboard({ navigation }: Props) {
                 <Text className="text-slate-900 text-lg font-bold">Por Revisar</Text>
               </View>
               
-              {/* BOTÓN ARREGLADO: Navega a FeedbackResults */}
               <Pressable onPress={() => navigation.navigate('FeedbackResults')}>
                 <Text className="text-blue-600 text-sm font-bold">Ver todo</Text>
               </Pressable>
@@ -187,8 +185,8 @@ export default function CoachDashboard({ navigation }: Props) {
                   <View className="flex-1 mr-2">
                     <View className="flex-row items-center justify-between mb-1">
                       <Text className="text-slate-900 font-bold text-base">{r.athleteName}</Text>
-                      <View className="flex-row items-center bg-white px-2 py-0.5 rounded-md border border-slate-100">
-                        <Clock size={10} color="#94a3b8" style={{ marginRight: 4 }} />
+                      <View className="flex-row items-center bg-white px-2 py-0.5 rounded-md border border-slate-100 gap-1">
+                        <Clock size={10} color="#94a3b8" />
                         <Text className="text-[10px] text-slate-400 font-bold">{r.time}</Text>
                       </View>
                     </View>
@@ -212,12 +210,11 @@ export default function CoachDashboard({ navigation }: Props) {
             <View className="flex-row items-center justify-between mb-5">
               <Text className="text-slate-900 text-lg font-bold">Mis Grupos</Text>
 
-              {/* Botón Crear Grupo */}
               <Pressable
                 onPress={() => navigation.navigate('CreateGroup')}
-                className="flex-row items-center bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100 active:bg-blue-100"
+                className="flex-row items-center bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100 active:bg-blue-100 gap-1"
               >
-                <Plus size={14} color="#2563EB" style={{ marginRight: 4 }} strokeWidth={3} />
+                <Plus size={14} color="#2563EB" strokeWidth={3} />
                 <Text className="text-blue-700 text-xs font-bold">Crear</Text>
               </Pressable>
             </View>
@@ -249,9 +246,9 @@ export default function CoachDashboard({ navigation }: Props) {
       <Pressable 
         onPress={() => navigation.navigate('AssignTestStep1')} 
         style={{ bottom: Math.max(insets.bottom, 24) }} 
-        className="absolute right-6 bg-blue-600 px-6 h-14 rounded-full shadow-lg shadow-blue-600/40 flex-row items-center justify-center active:scale-95 active:opacity-90"
+        className="absolute right-6 bg-blue-600 px-6 h-14 rounded-full shadow-lg shadow-blue-600/40 flex-row items-center justify-center active:opacity-90 gap-1"
       >
-        <Plus size={24} color="white" strokeWidth={3} style={{ marginRight: 4 }} />
+        <Plus size={24} color="white" strokeWidth={3} />
         <Text className="text-white font-bold text-base tracking-wide">Asignar Prueba</Text>
       </Pressable>
 
