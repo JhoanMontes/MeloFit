@@ -1,91 +1,124 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-// import { supabase } from "../lib/supabase"; // COMENTADO: Backend real
+import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { supabase } from "../lib/supabase";
 
-// Definimos los roles que espera tu App.tsx
-type UserRole = 'guest' | 'aprendiz' | 'entrenador';
+type UserRole = "guest" | "aprendiz" | "entrenador";
 
 interface AuthContextType {
   role: UserRole;
-  // user: any; // COMENTADO: Datos reales de usuario
-  // loading: boolean; // COMENTADO
-  
-  // --- FUNCIONES MOCK (Para Diseño) ---
-  signIn: (role: 'aprendiz' | 'entrenador') => void;
-  signOut: () => void;
+  user: any | null;
+  loading: boolean;
 
-  // --- FUNCIONES SUPABASE (COMENTADAS) ---
-  // login: (email: string, password: string) => Promise<void>;
-  // register: (email: string, password: string, role: UserRole) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [role, setRole] = useState<UserRole>('guest');
-  // const [user, setUser] = useState<any>(null);
-  // const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<UserRole>("guest");
+  const [user, setUser] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // --- MODO DISEÑO: Funciones Simples ---
-  const signIn = (newRole: 'aprendiz' | 'entrenador') => {
-    console.log("Simulando login como:", newRole);
-    setRole(newRole); // ¡Esto dispara la navegación en App.tsx!
-  };
-
-  const signOut = () => {
-    setRole('guest');
-  };
-
-  /* ------------------------------------------------------------
-     --- CÓDIGO SUPABASE (GUARDADO PARA LUEGO) ---
-     ------------------------------------------------------------
-  
-  // Verificar sesión al inicio
+  /** --------------------------------------------------------------
+   *  VERIFICAR SESIÓN AL INICIAR LA APP
+   * -------------------------------------------------------------- */
   useEffect(() => {
-    const checkSession = async () => {
+    const loadSession = async () => {
       const { data } = await supabase.auth.getSession();
-      const sessionUser = data?.session?.user || null;
+      const sessionUser = data.session?.user ?? null;
+
       setUser(sessionUser);
-      
+
       if (sessionUser) {
-        // Obtenemos el rol desde los metadatos del usuario
-        const userRole = sessionUser.user_metadata?.role || "guest";
-        setRole(userRole);
+        const role = await fetchUserRole(sessionUser.id);
+        setRole(role);
       }
+
       setLoading(false);
     };
-    checkSession();
+
+    loadSession();
+
+    // Monitorear cambios en sesión en tiempo real
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_, session) => {
+      const newUser = session?.user ?? null;
+      setUser(newUser);
+
+      if (newUser) {
+        const role = await fetchUserRole(newUser.id);
+        setRole(role);
+      } else {
+        setRole("guest");
+      }
+    });
+
+    return () => listener.subscription.unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    setUser(data.user);
-    // Actualizamos el rol basado en la BD
-    setRole(data.user.user_metadata?.role || "guest");
+  /** --------------------------------------------------------------
+   *  OBTENER ROL desde la tabla "usuario"
+   * -------------------------------------------------------------- */
+  const fetchUserRole = async (auth_id: string): Promise<UserRole> => {
+    const { data, error } = await supabase
+      .from("usuario")
+      .select("rol")
+      .eq("auth_id", auth_id)
+      .single();
+
+    if (error || !data) return "guest";
+
+    return data.rol as UserRole;
   };
 
-  const register = async (email: string, password: string, role: UserRole) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { role } },
-    });
-    if (error) throw error;
-    setUser(data.user);
-    setRole(role);
+  /** --------------------------------------------------------------
+   *  LOGIN REAL CON SUPABASE
+   * -------------------------------------------------------------- */
+  const login = async (email: string, password: string) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) return { success: false, error: error.message };
+
+      setUser(data.user);
+
+      const role = await fetchUserRole(data.user.id);
+      setRole(role);
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   };
-  ------------------------------------------------------------ */
+
+  /** --------------------------------------------------------------
+   *  LOGOUT
+   * -------------------------------------------------------------- */
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setRole("guest");
+  };
 
   return (
-    // Pasamos solo lo que usamos ahora. Cuando actives Supabase, descomenta user, login, register.
-    <AuthContext.Provider value={{ role, signIn, signOut }}>
+    <AuthContext.Provider
+      value={{
+        role,
+        user,
+        loading,
+        login,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth debe usarse dentro de un AuthProvider");
-  return context;
-}
+export const useAuth = () => {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth debe usarse dentro de un AuthProvider");
+  return ctx;
+};

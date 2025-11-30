@@ -28,7 +28,7 @@ import { EntrenadorStackParamList } from "../../navigation/types";
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "Dashboard">;
 
 export default function CoachDashboard({ navigation }: Props) {
-  const { signOut } = useAuth();
+  const { logout } = useAuth();
   const insets = useSafeAreaInsets();
   const [showProfileModal, setShowProfileModal] = useState(false);
 
@@ -91,7 +91,7 @@ export default function CoachDashboard({ navigation }: Props) {
           </Pressable>
 
           <Pressable 
-            onPress={() => { setShowProfileModal(false); signOut(); }} 
+            onPress={() => { setShowProfileModal(false); logout(); }} 
             className="w-full bg-red-50 py-4 rounded-2xl flex-row items-center justify-center active:bg-red-100"
           >
             <LogOut size={20} color="#DC2626" style={{ marginRight: 8 }} />
