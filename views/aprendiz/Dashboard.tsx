@@ -30,7 +30,7 @@ import { AprendizStackParamList } from "../../navigation/types";
 type Props = NativeStackScreenProps<AprendizStackParamList, "Dashboard">;
 
 export default function Dashboard({ navigation }: Props) {
-  const { signOut } = useAuth();
+  const { logout } = useAuth();
   const insets = useSafeAreaInsets();
   const [showProfileModal, setShowProfileModal] = useState(false);
 
@@ -90,7 +90,7 @@ export default function Dashboard({ navigation }: Props) {
 
           {/* Logout */}
           <Pressable
-            onPress={() => { setShowProfileModal(false); signOut(); }}
+            onPress={() => { setShowProfileModal(false); logout(); }}
             className="w-full bg-red-50 py-4 rounded-2xl flex-row items-center justify-center space-x-2 active:bg-red-100"
           >
             <LogOut size={20} color="#DC2626" />

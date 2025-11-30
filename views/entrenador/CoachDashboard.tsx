@@ -28,7 +28,8 @@ import { EntrenadorStackParamList } from "../../navigation/types";
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "Dashboard">;
 
 export default function CoachDashboard({ navigation }: Props) {
-  const { signOut } = useAuth();
+  // 1. USO DE LOGOUT CORRECTO
+  const { logout } = useAuth();
   const insets = useSafeAreaInsets();
   const [showProfileModal, setShowProfileModal] = useState(false);
 
@@ -88,8 +89,9 @@ export default function CoachDashboard({ navigation }: Props) {
             <ChevronRight size={20} color="#94a3b8" />
           </Pressable>
 
+          {/* FIX ICONO: gap-2 en el padre, sin style en el icono */}
           <Pressable 
-            onPress={() => { setShowProfileModal(false); signOut(); }} 
+            onPress={() => { setShowProfileModal(false); logout(); }} 
             className="w-full bg-red-50 py-4 rounded-2xl flex-row items-center justify-center active:bg-red-100 gap-2"
           >
             <LogOut size={20} color="#DC2626" />
@@ -136,7 +138,10 @@ export default function CoachDashboard({ navigation }: Props) {
           showsVerticalScrollIndicator={false}
         >
 
-          {/* Quick Actions - CORREGIDO: Eliminamos scale-95 y transition-transform */}
+          {/* Quick Actions 
+              2. FIX ANIMACIÓN: Quitamos scale-95 y transition-transform 
+              Usamos active:opacity-60 para feedback visual seguro
+          */}
           <View className="flex-row justify-between mb-6">
             <Pressable 
               onPress={() => navigation.navigate('CoachReports')} 
@@ -185,6 +190,7 @@ export default function CoachDashboard({ navigation }: Props) {
                   <View className="flex-1 mr-2">
                     <View className="flex-row items-center justify-between mb-1">
                       <Text className="text-slate-900 font-bold text-base">{r.athleteName}</Text>
+                      {/* FIX ICONO: gap-1 */}
                       <View className="flex-row items-center bg-white px-2 py-0.5 rounded-md border border-slate-100 gap-1">
                         <Clock size={10} color="#94a3b8" />
                         <Text className="text-[10px] text-slate-400 font-bold">{r.time}</Text>
@@ -210,6 +216,7 @@ export default function CoachDashboard({ navigation }: Props) {
             <View className="flex-row items-center justify-between mb-5">
               <Text className="text-slate-900 text-lg font-bold">Mis Grupos</Text>
 
+              {/* FIX ICONO: gap-1 */}
               <Pressable
                 onPress={() => navigation.navigate('CreateGroup')}
                 className="flex-row items-center bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100 active:bg-blue-100 gap-1"
@@ -242,7 +249,7 @@ export default function CoachDashboard({ navigation }: Props) {
         </ScrollView>
       </SafeAreaView>
 
-      {/* FAB */}
+      {/* FAB - FIX ANIMACIÓN: Quitamos scale-95 */}
       <Pressable 
         onPress={() => navigation.navigate('AssignTestStep1')} 
         style={{ bottom: Math.max(insets.bottom, 24) }} 

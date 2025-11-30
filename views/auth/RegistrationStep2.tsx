@@ -66,18 +66,6 @@ export default function RegistrationStep2({ navigation, route }: Props) {
         return;
       }
 
-      console.log("✅ Usuario creado:", data);
-      Alert.alert(
-        "Registro Exitoso",
-        "Serás enviado al inicio de sesión para que puedas acceder a tu cuenta",
-        [
-          { 
-            text: "Ir al Login", 
-            onPress: () => navigation.navigate('Login') 
-          }
-        ]
-      );
-
     } catch (err: any) {
       console.error("❌ Error inesperado:", err);
       Alert.alert("Error", "Ocurrió un error inesperado.");

@@ -21,7 +21,7 @@ import { useAuth } from "../../context/AuthContext";
 type Props = NativeStackScreenProps<AuthStackParamList, "Login">;
 
 export default function LoginScreen({ navigation }: Props) {
-  const { signIn } = useAuth();
+  const { login } = useAuth();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -30,20 +30,20 @@ export default function LoginScreen({ navigation }: Props) {
 
   const [isCoach, setIsCoach] = useState(false);
 
- const handleLogin = () => {
-   
-    // if (!formData.email.trim() || !formData.password.trim()) {
-    //   Alert.alert("Campos Incompletos", "Por favor ingresa tu correo y contraseña.");
-    //   return; 
-    // }
+ const handleLogin = async () => {
+  if (!formData.email || !formData.password) {
+    Alert.alert("Error", "Ingresa correo y contraseña.");
+    return;
+  }
 
-  
-    if (isCoach) {
-      signIn('entrenador');
-    } else {
-      signIn('aprendiz');
-    }
-  };
+  const { success, error } = await login(formData.email, formData.password);
+
+  if (!success) {
+    Alert.alert("Error al iniciar sesión", "Credenciales incorrectas, por favor verifique su información");
+    return;
+  }
+};
+
 
   return (
     <View className="flex-1 bg-white">
