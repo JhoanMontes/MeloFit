@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   View, 
   Text, 
@@ -24,14 +24,45 @@ import {
 } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { EntrenadorStackParamList } from "../../navigation/types";
+import { supabase } from "../../lib/supabase";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "Dashboard">;
 
 export default function CoachDashboard({ navigation }: Props) {
   // 1. USO DE LOGOUT CORRECTO
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const insets = useSafeAreaInsets();
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [nombre, setNombre] = useState<String>("entrenador");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (!user?.id) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('usuario')       
+          .select('nombre_completo')
+          .eq('auth_id', user.id)  
+          .single();
+
+        if (error) {
+          console.log('Error buscando usuario:', error.message);
+        }
+
+        if (data) {
+          setNombre(data.nombre_completo); 
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserData();
+  }, [user]);
 
   // Datos Mock
   const pendingResults = [
@@ -83,7 +114,7 @@ export default function CoachDashboard({ navigation }: Props) {
               <User size={30} color="#2563EB" />
             </View>
             <View className="flex-1">
-              <Text className="text-xl font-bold text-slate-900">Michael Torres</Text>
+              <Text className="text-xl font-bold text-slate-900">{nombre}</Text>
               <Text className="text-slate-500 font-medium">Head Coach</Text>
             </View>
             <ChevronRight size={20} color="#94a3b8" />
@@ -113,7 +144,7 @@ export default function CoachDashboard({ navigation }: Props) {
         <View className="px-6 pb-4 mt-3 flex-row items-center justify-between">
           <View>
             <Text className="text-slate-500 text-sm font-semibold mb-0.5">Panel del Entrenador</Text>
-            <Text className="text-slate-900 text-2xl font-extrabold tracking-tight">Michael Torres</Text>
+            <Text className="text-slate-900 text-2xl font-extrabold tracking-tight">{nombre}</Text>
           </View>
           <View className="flex-row items-center gap-x-3">
             <Pressable 
