@@ -52,7 +52,9 @@ export default function CoachDashboard({ navigation }: Props) {
         }
 
         if (data) {
-          setNombre(data.nombre_completo); 
+          const primerNombre = data.nombre_completo.trim().split(" ");
+          console.log(primerNombre);
+          setNombre(primerNombre[0].toUpperCase()); 
         }
       } catch (e) {
         console.error(e);
