@@ -21,7 +21,7 @@ const AppNavigator = () => {
       {role === 'guest' && <AuthStack />}
       
       {/* 2. Si es aprendiz, muestra AprendizStack */}
-      {role === 'aprendiz' && <AprendizStack />}
+      {role === 'atleta' && <AprendizStack />}
       
       {/* 3. CORRECCIÓN: Quitamos los comentarios de aquí para que funcione el entrenador */}
       {role === 'entrenador' && <EntrenadorStack />}

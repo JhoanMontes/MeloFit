@@ -42,8 +42,6 @@ export default function LoginScreen({ navigation }: Props) {
     Alert.alert("Error al iniciar sesión", "Credenciales incorrectas, por favor verifique su información");
     return;
   }
-
-  // Navegación automática: App.tsx ya detecta el role 
 };
 
 

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 
-type UserRole = "guest" | "aprendiz" | "entrenador";
+type UserRole = "guest" | "atleta" | "entrenador";
 
 interface AuthContextType {
   role: UserRole;
