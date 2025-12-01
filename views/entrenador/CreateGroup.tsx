@@ -21,8 +21,12 @@ import {
   UserPlus 
 } from "lucide-react-native";
 import { EntrenadorStackParamList } from "../../navigation/types";
+import { supabase } from "./../../lib/supabase"; 
+import { useAuth } from "./../../context/AuthContext";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "CreateGroup">;
+
+
 
 const availableAthletes = [
   { id: 1, name: 'Alex Johnson', age: 24, level: 'Avanzado', avatar: '👨‍🦱' },
@@ -42,6 +46,95 @@ const groupColors = [
 ];
 
 export default function CreateGroup({ navigation }: Props) {
+  const { user } = useAuth(); 
+  const [loading, setLoading] = useState(false);
+  
+
+  const generarCodigoGrupo = () => {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < 5; i++) {
+      result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return result;
+  };
+
+
+  const verificarCodigoGrupo = async () => {
+    let isUnique = false;
+    let codigoNuevo = '';
+
+    while (!isUnique) {
+      codigoNuevo = generarCodigoGrupo();
+      const { data } = await supabase
+        .from('grupo')
+        .select('codigo')
+        .eq('codigo', codigoNuevo)
+        .maybeSingle()
+      if (!data) isUnique = true;
+    }
+    return codigoNuevo;
+  };
+
+
+  const handleCreateGroup = async () => {
+    if (!groupName.trim()) {
+      Alert.alert("Falta el nombre", "Por favor asigna un nombre al grupo.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { data: trainerData, error: trainerError } = await supabase
+        .from('usuario')
+        .select('no_documento')
+        .eq('auth_id', user.id)
+        .single();
+
+      if (trainerError || !trainerData) throw new Error("No se encontró información del entrenador");
+      const trainerId = trainerData.no_documento;
+
+      const { data: existingGroup } = await supabase
+        .from('grupo')
+        .select('codigo')
+        .eq('nombre', groupName.trim())
+        .eq('entrenador_no_documento', trainerId)
+        .maybeSingle();
+
+      if (existingGroup) {
+        Alert.alert("Nombre duplicado", "Ya tienes un grupo con este nombre. Por favor elige otro.");
+        setLoading(false);
+        return;
+      }
+
+      //  Generar Código Único
+      const uniqueCode = await verificarCodigoGrupo();
+
+      // Insertar el Grupo
+      const { error: insertError } = await supabase
+        .from('grupo')
+        .insert({
+          nombre: groupName.trim(),
+          descripcion: groupDescription.trim(),
+          codigo: uniqueCode,
+          entrenador_no_documento: trainerId,
+          fecha_creacion: new Date(), 
+        });
+
+      if (insertError) throw insertError;
+
+      Alert.alert("¡Grupo Creado!", `Código: ${uniqueCode}\nEl grupo "${groupName}" está listo.`, [
+        { text: "Ok", onPress: () => navigation.navigate('Dashboard') } // O navigation.goBack()
+      ]);
+
+    } catch (error: any) {
+      console.error(error);
+      Alert.alert("Error", error.message || "No se pudo crear el grupo");
+    } finally {
+      setLoading(false);
+    }
+  };
   const insets = useSafeAreaInsets();
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
@@ -62,22 +155,7 @@ export default function CreateGroup({ navigation }: Props) {
     }
   };
 
-  const handleCreateGroup = () => {
-    if (!groupName.trim()) {
-      Alert.alert("Falta el nombre", "Por favor asigna un nombre al grupo.");
-      return;
-    }
-    if (selectedAthletes.length === 0) {
-      Alert.alert("Grupo vacío", "Debes seleccionar al menos un atleta.");
-      return;
-    }
-    
-    Alert.alert("¡Grupo Creado!", `El grupo "${groupName}" está listo.`, [
-      { text: "Ir al Dashboard", onPress: () => navigation.navigate('Dashboard') }
-    ]);
-  };
-
-  const isFormValid = groupName.trim().length > 0 && selectedAthletes.length > 0;
+  const isFormValid = groupName.trim().length > 0;
 
   return (
     <View className="flex-1 bg-slate-50">
@@ -159,14 +237,14 @@ export default function CreateGroup({ navigation }: Props) {
                     </View>
                   </View>
 
-                  {/* Color Picker */}
+                  {/*
                   <View className="pt-2">
                     <View className="flex-row items-center space-x-2 mb-4">
                        <Palette size={16} color="#64748b" />
                        <Text className="text-slate-700 font-bold text-sm">Etiqueta de Color</Text>
                     </View>
                     
-                    {/* Grid de colores con más espacio */}
+                    {/* Grid de colores con más espacio 
                     <View className="flex-row flex-wrap gap-4">
                       {groupColors.map((color) => {
                          const isSelected = selectedColor.value === color.value;
@@ -184,11 +262,11 @@ export default function CreateGroup({ navigation }: Props) {
                          );
                       })}
                     </View>
-                  </View>
+                  </View> */}
                 </View>
               </View>
 
-              {/* 2. TARJETA ATLETAS */}
+              {/*
               <View className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100">
                 <View className="flex-row items-center justify-between mb-6 border-b border-slate-50 pb-4">
                   <View className="flex-row items-center space-x-3">
@@ -201,7 +279,7 @@ export default function CreateGroup({ navigation }: Props) {
                       </View>
                   </View>
                   
-                  {/* Contador */}
+                  {/* Contador 
                   {selectedAthletes.length > 0 && (
                     <View 
                       className="px-3 py-1.5 rounded-full items-center justify-center shadow-sm"
@@ -212,7 +290,7 @@ export default function CreateGroup({ navigation }: Props) {
                   )}
                 </View>
 
-                {/* Buscador */}
+                {/* Buscador *
                 <View className="relative mb-6">
                   <View className="absolute left-4 top-3.5 z-10">
                     <Search size={20} color="#9CA3AF" />
@@ -226,7 +304,7 @@ export default function CreateGroup({ navigation }: Props) {
                   />
                 </View>
 
-                {/* Lista de Atletas */}
+                {/* Lista de Atletas 
                 <View className="space-y-3">
                   {filteredAthletes.length > 0 ? (
                     filteredAthletes.map((athlete) => {
@@ -268,7 +346,9 @@ export default function CreateGroup({ navigation }: Props) {
                     </View>
                   )}
                 </View>
+                
               </View>
+              */}
 
             </View>
           </ScrollView>
@@ -289,7 +369,7 @@ export default function CreateGroup({ navigation }: Props) {
             >
               <Users size={20} color={isFormValid ? "white" : "#94a3b8"} style={{ marginRight: 8 }} />
               <Text className={`font-bold text-lg tracking-wide ${isFormValid ? 'text-white' : 'text-slate-500'}`}>
-                Crear Grupo ({selectedAthletes.length})
+                Crear Grupo
               </Text>
             </Pressable>
           </View>
