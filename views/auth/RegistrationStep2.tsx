@@ -1,19 +1,26 @@
 import React, { useState } from "react";
 import { 
-  View, Text, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform, StatusBar
+  View, 
+  Text, 
+  TextInput, 
+  Pressable, 
+  ScrollView, 
+  KeyboardAvoidingView, 
+  Platform, 
+  StatusBar
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ArrowLeft, CheckCircle2, User, Dumbbell } from "lucide-react-native";
 import { AuthStackParamList } from "../../navigation/types";
-import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
-import CustomAlert, { AlertType } from "../../components/CustomAlert"; // <--- IMPORTAR
+import CustomAlert, { AlertType } from "../../components/CustomAlert";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "RegistrationStep2">;
 
 export default function RegistrationStep2({ navigation, route }: Props) {
-  const { signIn } = useAuth(); // Ahora signIn SÍ EXISTE en el contexto :)
+
+  // 🔹 Datos recibidos desde Step1
   let { nombre_completo, email, no_documento } = route.params;
 
   const [formData, setFormData] = useState({
@@ -22,7 +29,7 @@ export default function RegistrationStep2({ navigation, route }: Props) {
     role: "atleta" as "atleta" | "entrenador"
   });
 
-  // ESTADO DEL MODAL
+  // 🔹 Estado del modal (reemplaza Alert.alert)
   const [alert, setAlert] = useState({
     visible: false,
     title: "",
@@ -36,56 +43,82 @@ export default function RegistrationStep2({ navigation, route }: Props) {
     if (alert.action) alert.action();
   };
 
+  // 🔹 Función final de registro (idéntica a la original)
   const handleComplete = async () => {
     if (!formData.password || formData.password !== formData.confirmPassword) {
-      setAlert({ visible: true, title: "Error", message: "Las contraseñas no coinciden.", type: "warning", action: null });
+      setAlert({
+        visible: true,
+        title: "Error",
+        message: "Las contraseñas no coinciden o están vacías.",
+        type: "warning",
+        action: null
+      });
       return;
     }
 
+    email = email.trim();
+
+    const finalData = {
+      nombre_completo,
+      email,
+      no_documento,
+      password: formData.password,
+      role: formData.role
+    };
+
+    console.log("➡️ Datos enviados:", finalData);
+
     try {
       const { data, error } = await supabase.auth.signUp({
-        email,
-        password: formData.password,
+        email: finalData.email,
+        password: finalData.password,
         options: {
           data: {
-            nombre_completo,
-            no_documento,
-            role: formData.role // 'atleta' o 'entrenador'
+            nombre_completo: finalData.nombre_completo,
+            no_documento: finalData.no_documento,
+            role: finalData.role
           }
         }
       });
 
       if (error) {
-        setAlert({ visible: true, title: "Error de Registro", message: error.message, type: "error", action: null });
+        console.error("❌ Error:", error.message);
+        setAlert({
+          visible: true,
+          title: "Error",
+          message: error.message,
+          type: "error",
+          action: null
+        });
         return;
       }
 
-      // ÉXITO: Navegamos manualmente usando signIn del contexto
+      // EXACTAMENTE como antes: no navegamos, no hacemos signIn.
       setAlert({
         visible: true,
-        title: "¡Cuenta Creada!",
-        message: "Tu registro fue exitoso. Bienvenido a LOCOOM.",
+        title: "Registro exitoso",
+        message: "Tu cuenta fue creada correctamente.",
         type: "success",
-        action: () => {
-          // Convertimos 'atleta' a 'aprendiz' si es necesario para el Contexto
-          if (formData.role === 'entrenador') {
-            signIn('entrenador');
-          } else {
-            signIn('aprendiz');
-          }
-        }
+        action: null
       });
 
     } catch (err: any) {
-      setAlert({ visible: true, title: "Error", message: "Ocurrió un error inesperado.", type: "error", action: null });
+      console.error("❌ Error inesperado:", err);
+      setAlert({
+        visible: true,
+        title: "Error",
+        message: "Ocurrió un error inesperado.",
+        type: "error",
+        action: null
+      });
     }
   };
 
   return (
     <View className="flex-1 bg-white">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
-      <CustomAlert 
+
+      <CustomAlert
         visible={alert.visible}
         title={alert.title}
         message={alert.message}
@@ -94,68 +127,206 @@ export default function RegistrationStep2({ navigation, route }: Props) {
       />
 
       <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right"]}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
-          <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-            
-            <View className="px-6 pt-4">
-               <Pressable onPress={() => navigation.goBack()} className="p-2 bg-gray-100 rounded-full w-10 h-10 items-center justify-center">
-                  <ArrowLeft size={20} color="black" />
-               </Pressable>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="flex-1"
+        >
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+
+            {/* HEADER */}
+            <View className="px-6 pt-4 pb-2">
+              <Pressable
+                onPress={() => navigation.goBack()}
+                className="w-12 h-12 rounded-full border border-slate-200 justify-center items-center bg-white shadow-sm active:bg-slate-50"
+              >
+                <ArrowLeft size={22} color="#334155" />
+              </Pressable>
             </View>
 
-            <View className="px-6 mt-6 mb-6">
-              <Text className="text-3xl font-bold text-slate-900">Seguridad y Rol</Text>
-              <Text className="text-slate-500 text-base mt-2">Último paso para crear tu cuenta.</Text>
+            {/* TÍTULO */}
+            <View className="px-6 mt-4 mb-8">
+              <Text className="text-slate-900 text-3xl font-extrabold tracking-tight mb-2">
+                Seguridad y Rol
+              </Text>
+              <Text className="text-slate-500 text-base font-medium mb-6">
+                Define tu contraseña y tu tipo de usuario.
+              </Text>
+
+              <View className="flex-row items-center gap-2">
+                <View className="flex-1 h-2 bg-blue-600 rounded-full" />
+                <View className="flex-1 h-2 bg-blue-600 rounded-full" />
+              </View>
+              <Text className="text-blue-600 text-xs font-bold mt-2 text-right">
+                Paso Final
+              </Text>
             </View>
 
-            <View className="px-6 space-y-4">
-              <View>
-                  <Text className="mb-2 font-bold text-slate-700">Contraseña</Text>
-                  <TextInput 
-                      secureTextEntry
-                      className="bg-slate-50 p-4 rounded-2xl border border-slate-200"
+            {/* FORMULARIO */}
+            <View className="px-6 space-y-6">
+              <View className="space-y-4">
+                
+                {/* Contraseña */}
+                <View className="space-y-2">
+                  <Text className="text-slate-700 font-semibold text-sm ml-1">
+                    Contraseña
+                  </Text>
+                  <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center">
+                    <TextInput
                       placeholder="••••••••"
+                      secureTextEntry
                       value={formData.password}
-                      onChangeText={(t) => setFormData({...formData, password: t})}
-                  />
-              </View>
-              <View>
-                  <Text className="mb-2 font-bold text-slate-700">Confirmar Contraseña</Text>
-                  <TextInput 
-                      secureTextEntry
-                      className="bg-slate-50 p-4 rounded-2xl border border-slate-200"
+                      onChangeText={(text) => setFormData({ ...formData, password: text })}
+                      className="flex-1 text-slate-900 text-base"
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
+                </View>
+
+                {/* Confirmar contraseña */}
+                <View className="space-y-2">
+                  <Text className="text-slate-700 font-semibold text-sm ml-1">
+                    Confirmar Contraseña
+                  </Text>
+                  <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center">
+                    <TextInput
                       placeholder="••••••••"
+                      secureTextEntry
                       value={formData.confirmPassword}
-                      onChangeText={(t) => setFormData({...formData, confirmPassword: t})}
-                  />
+                      onChangeText={(text) =>
+                        setFormData({ ...formData, confirmPassword: text })
+                      }
+                      className="flex-1 text-slate-900 text-base"
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
+                </View>
+
               </View>
 
-              <Text className="text-lg font-bold mt-4">Soy...</Text>
-              
-              <Pressable 
-                  onPress={() => setFormData({...formData, role: 'atleta'})}
-                  className={`flex-row items-center p-4 rounded-2xl border ${formData.role === 'atleta' ? 'bg-blue-50 border-blue-600' : 'bg-white border-slate-200'}`}
-              >
-                  <User size={24} color={formData.role === 'atleta' ? '#2563EB' : '#64748b'} />
-                  <Text className={`ml-3 text-lg flex-1 ${formData.role === 'atleta' ? 'font-bold text-blue-800' : 'text-slate-600'}`}>Deportista</Text>
-                  {formData.role === 'atleta' && <CheckCircle2 size={20} color="#2563EB" />}
-              </Pressable>
+              <View className="h-[1px] bg-slate-100 my-2" />
 
-              <Pressable 
-                  onPress={() => setFormData({...formData, role: 'entrenador'})}
-                  className={`flex-row items-center p-4 rounded-2xl border ${formData.role === 'entrenador' ? 'bg-blue-50 border-blue-600' : 'bg-white border-slate-200'}`}
-              >
-                  <Dumbbell size={24} color={formData.role === 'entrenador' ? '#2563EB' : '#64748b'} />
-                  <Text className={`ml-3 text-lg flex-1 ${formData.role === 'entrenador' ? 'font-bold text-blue-800' : 'text-slate-600'}`}>Entrenador</Text>
-                  {formData.role === 'entrenador' && <CheckCircle2 size={20} color="#2563EB" />}
-              </Pressable>
+              {/* Rol */}
+              <View className="space-y-3">
+                <Text className="text-slate-900 font-bold text-lg">
+                  ¿Cuál es tu objetivo?
+                </Text>
+
+                {/* Atleta */}
+                <Pressable
+                  onPress={() => setFormData({ ...formData, role: "atleta" })}
+                  className={`flex-row items-center p-4 rounded-2xl border ${
+                    formData.role === "atleta"
+                      ? "bg-blue-50 border-blue-600 shadow-sm"
+                      : "bg-white border-slate-200"
+                  }`}
+                >
+                  <View
+                    className={`p-3 rounded-xl mr-4 ${
+                      formData.role === "atleta" ? "bg-blue-200" : "bg-slate-100"
+                    }`}
+                  >
+                    <User
+                      size={24}
+                      color={formData.role === "atleta" ? "#1d4ed8" : "#64748b"}
+                    />
+                  </View>
+
+                  <View className="flex-1">
+                    <Text
+                      className={`text-base font-bold ${
+                        formData.role === "atleta"
+                          ? "text-blue-900"
+                          : "text-slate-700"
+                      }`}
+                    >
+                      Soy Deportista
+                    </Text>
+                    <Text className="text-slate-500 text-xs mt-0.5">
+                      Quiero entrenar y ver mi progreso
+                    </Text>
+                  </View>
+
+                  <View
+                    className={`w-6 h-6 rounded-full border justify-center items-center ${
+                      formData.role === "atleta"
+                        ? "bg-blue-600 border-blue-600"
+                        : "border-slate-300"
+                    }`}
+                  >
+                    {formData.role === "atleta" && (
+                      <CheckCircle2 size={14} color="white" />
+                    )}
+                  </View>
+                </Pressable>
+
+                {/* Entrenador */}
+                <Pressable
+                  onPress={() => setFormData({ ...formData, role: "entrenador" })}
+                  className={`flex-row items-center p-4 rounded-2xl border ${
+                    formData.role === "entrenador"
+                      ? "bg-blue-50 border-blue-600 shadow-sm"
+                      : "bg-white border-slate-200"
+                  }`}
+                >
+                  <View
+                    className={`p-3 rounded-xl mr-4 ${
+                      formData.role === "entrenador"
+                        ? "bg-blue-200"
+                        : "bg-slate-100"
+                    }`}
+                  >
+                    <Dumbbell
+                      size={24}
+                      color={formData.role === "entrenador" ? "#1d4ed8" : "#64748b"}
+                    />
+                  </View>
+
+                  <View className="flex-1">
+                    <Text
+                      className={`text-base font-bold ${
+                        formData.role === "entrenador"
+                          ? "text-blue-900"
+                          : "text-slate-700"
+                      }`}
+                    >
+                      Soy Entrenador
+                    </Text>
+                    <Text className="text-slate-500 text-xs mt-0.5">
+                      Gestionar atletas y rutinas
+                    </Text>
+                  </View>
+
+                  <View
+                    className={`w-6 h-6 rounded-full border justify-center items-center ${
+                      formData.role === "entrenador"
+                        ? "bg-blue-600 border-blue-600"
+                        : "border-slate-300"
+                    }`}
+                  >
+                    {formData.role === "entrenador" && (
+                      <CheckCircle2 size={14} color="white" />
+                    )}
+                  </View>
+                </Pressable>
+              </View>
+
             </View>
 
-            <View className="flex-1" />
+            <View className="flex-1 min-h-[40px]" />
 
-            <View className="px-6 py-6 pb-10">
-              <Pressable onPress={handleComplete} className="bg-blue-600 h-14 rounded-2xl items-center justify-center shadow-lg active:opacity-90">
-                  <Text className="text-white font-bold text-lg">Completar Registro</Text>
+            {/* Botón final */}
+            <View className="px-6 pb-8 pt-4">
+              <Pressable
+                onPress={handleComplete}
+                className="w-full bg-blue-600 rounded-2xl h-14 justify-center items-center shadow-lg shadow-blue-600/25 active:opacity-90 active:scale-[0.98]"
+              >
+                <Text className="text-white text-lg font-bold tracking-wide">
+                  Completar Registro
+                </Text>
               </Pressable>
             </View>
 

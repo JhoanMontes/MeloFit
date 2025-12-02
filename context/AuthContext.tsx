@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 
-type UserRole = "guest" | "aprendiz" | "entrenador"; // Normalicé 'aprendiz' vs 'atleta'
+type UserRole = "guest" | "atleta" | "entrenador";
 
 interface AuthContextType {
   role: UserRole;
@@ -10,9 +10,6 @@ interface AuthContextType {
 
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
-  
-  // Agregamos esto para que tus pantallas no den error
-  signIn: (role: 'aprendiz' | 'entrenador') => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,23 +19,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // --- VERIFICAR SESIÓN AL INICIO ---
+  /** --------------------------------------------------------------
+   *  VERIFICAR SESIÓN AL INICIAR LA APP
+   * -------------------------------------------------------------- */
   useEffect(() => {
     const loadSession = async () => {
       const { data } = await supabase.auth.getSession();
       const sessionUser = data.session?.user ?? null;
+
       setUser(sessionUser);
+
       if (sessionUser) {
         const role = await fetchUserRole(sessionUser.id);
         setRole(role);
       }
+
       setLoading(false);
     };
+
     loadSession();
 
+    // Monitorear cambios en sesión
     const { data: listener } = supabase.auth.onAuthStateChange(async (_, session) => {
       const newUser = session?.user ?? null;
       setUser(newUser);
+
       if (newUser) {
         const role = await fetchUserRole(newUser.id);
         setRole(role);
@@ -46,54 +51,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRole("guest");
       }
     });
+
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // --- OBTENER ROL ---
+  /** --------------------------------------------------------------
+   *  OBTENER ROL desde la tabla "usuario"
+   * -------------------------------------------------------------- */
   const fetchUserRole = async (auth_id: string): Promise<UserRole> => {
     const { data, error } = await supabase
       .from("usuario")
       .select("rol")
       .eq("auth_id", auth_id)
       .single();
-      
-    // Mapeo por si la BD tiene 'atleta' pero la app usa 'aprendiz'
-    if (data?.rol === 'atleta') return 'aprendiz'; 
-    if (data?.rol) return data.rol as UserRole;
-    return "guest";
+
+    if (error || !data) return "guest";
+
+    return data.rol as UserRole;
   };
 
-  // --- LOGIN REAL ---
+  /** --------------------------------------------------------------
+   *  LOGIN REAL CON SUPABASE
+   * -------------------------------------------------------------- */
   const login = async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
       if (error) return { success: false, error: error.message };
-      
-      // El listener de onAuthStateChange se encargará de actualizar el rol,
-      // pero retornamos success para que la UI sepa.
+
+      setUser(data.user);
+      const role = await fetchUserRole(data.user.id);
+      setRole(role);
+
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };
     }
   };
 
-  // --- LOGOUT ---
+  /** --------------------------------------------------------------
+   *  LOGOUT
+   * -------------------------------------------------------------- */
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
     setRole("guest");
   };
 
-  // --- COMPATIBILIDAD: SIGN IN MANUAL ---
-  // Esto permite que tu código de RegistrationStep2 funcione sin cambios drásticos
-  const signIn = (newRole: 'aprendiz' | 'entrenador') => {
-    console.log("Forzando rol local:", newRole);
-    setRole(newRole);
-  };
-
   return (
     <AuthContext.Provider
-      value={{ role, user, loading, login, logout, signIn }}
+      value={{
+        role,
+        user,
+        loading,
+        login,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>

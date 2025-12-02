@@ -14,7 +14,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ArrowLeft, Dumbbell, Check } from "lucide-react-native";
 import { AuthStackParamList } from "../../navigation/types";
 import { useAuth } from "../../context/AuthContext";
-import CustomAlert, { AlertType } from "../../components/CustomAlert"; 
+import CustomAlert, { AlertType } from "../../components/CustomAlert";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "Login">;
 
@@ -25,9 +25,10 @@ export default function LoginScreen({ navigation }: Props) {
     email: "",
     password: "",
   });
+
   const [isCoach, setIsCoach] = useState(false);
 
-  // ESTADO PARA EL MODAL
+  // MODAL CONFIG
   const [alertConfig, setAlertConfig] = useState({
     visible: false,
     title: "",
@@ -41,27 +42,29 @@ export default function LoginScreen({ navigation }: Props) {
 
   const handleLogin = async () => {
     if (!formData.email || !formData.password) {
-      showAlert("Campos incompletos", "Por favor ingresa tu correo y contraseña.", "warning");
+      showAlert("Campos incompletos", "Ingresa correo y contraseña.", "warning");
       return;
     }
 
-    // Simulamos el login (o usamos el real si ya descomentaste Supabase)
-    // Como estamos en modo diseño/híbrido, aquí deberías usar signIn() si quieres navegar directo
-    // Pero si usas la función login() real, maneja el error así:
-    
     const { success, error } = await login(formData.email, formData.password);
 
     if (!success) {
-      showAlert("Error de acceso", "Credenciales incorrectas. Verifica tu información.", "error");
+      showAlert(
+        "Error al iniciar sesión",
+        "Credenciales incorrectas, por favor verifica tu información",
+        "error"
+      );
       return;
     }
+
+    // ❗ No mostramos modal aquí, dejamos que AuthContext navegue solo.
   };
 
   return (
     <View className="flex-1 bg-white">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
-      {/* MODAL RENDERIZADO */}
+
+      {/* MODAL ALERT */}
       <CustomAlert 
         visible={alertConfig.visible}
         title={alertConfig.title}
@@ -104,7 +107,9 @@ export default function LoginScreen({ navigation }: Props) {
             {/* FORMULARIO */}
             <View className="px-6 space-y-5">
               <View className="space-y-2">
-                <Text className="text-slate-700 font-semibold text-sm ml-1">Correo Electrónico</Text>
+                <Text className="text-slate-700 font-semibold text-sm ml-1">
+                  Correo Electrónico
+                </Text>
                 <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center focus:border-blue-500">
                   <TextInput
                     placeholder="juan@ejemplo.com"
@@ -119,7 +124,9 @@ export default function LoginScreen({ navigation }: Props) {
               </View>
 
               <View className="space-y-2">
-                <Text className="text-slate-700 font-semibold text-sm ml-1">Contraseña</Text>
+                <Text className="text-slate-700 font-semibold text-sm ml-1">
+                  Contraseña
+                </Text>
                 <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center">
                   <TextInput
                     placeholder="••••••••"
@@ -131,10 +138,13 @@ export default function LoginScreen({ navigation }: Props) {
                   />
                 </View>
                 <Pressable className="items-end pt-1">
-                  <Text className="text-blue-600 text-sm font-bold">¿Olvidaste tu contraseña?</Text>
+                  <Text className="text-blue-600 text-sm font-bold">
+                    ¿Olvidaste tu contraseña?
+                  </Text>
                 </Pressable>
               </View>
 
+              {/* COACH MODE */}
               <Pressable 
                 onPress={() => setIsCoach(!isCoach)}
                 className={`flex-row items-center mt-4 p-4 rounded-2xl border transition-colors ${
@@ -148,22 +158,29 @@ export default function LoginScreen({ navigation }: Props) {
                 >
                   {isCoach && <Check size={14} color="white" strokeWidth={4} />}
                 </View>
+
                 <View className="flex-1">
-                  <Text className={`text-sm font-bold ${isCoach ? "text-blue-800" : "text-slate-700"}`}>Modo Entrenador</Text>
+                  <Text className={`text-sm font-bold ${isCoach ? "text-blue-800" : "text-slate-700"}`}>
+                    Modo Entrenador
+                  </Text>
                   <Text className="text-slate-500 text-xs">Accede a herramientas de gestión</Text>
                 </View>
+
                 {isCoach && <Dumbbell size={20} color="#2563eb" />}
               </Pressable>
             </View>
 
             <View className="flex-1 min-h-[40px]" />
 
+            {/* FOOTER */}
             <View className="px-6 pb-8 pt-4">
               <Pressable
                 onPress={handleLogin}
                 className="w-full bg-blue-600 rounded-2xl h-14 justify-center items-center shadow-lg shadow-blue-600/25 active:opacity-90 active:scale-[0.98]"
               >
-                <Text className="text-white text-lg font-bold tracking-wide">Iniciar Sesión</Text>
+                <Text className="text-white text-lg font-bold tracking-wide">
+                  Iniciar Sesión
+                </Text>
               </Pressable>
 
               <View className="flex-row justify-center items-center mt-6 space-x-1">
