@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-// VOLVEMOS A TUS ICONOS ORIGINALES (Son seguros si el Input no explota)
+
 import { 
   ArrowLeft, 
   Activity, 
