@@ -1,7 +1,8 @@
 import React from "react";
 import { View, Text, FlatList, Pressable } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { ArrowLeft, Plus, ChevronRight, FileText, Clock, Ruler } from "lucide-react-native";
+// CAMBIO: Eliminamos Lucide y usamos Ionicons
+import { Ionicons } from "@expo/vector-icons";
 import { EntrenadorStackParamList } from "../../navigation/types";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -21,18 +22,21 @@ export default function ManageTests({ navigation }: Props) {
     <Pressable className="bg-white p-4 rounded-2xl mb-3 flex-row items-center justify-between shadow-sm border border-gray-100">
       <View className="flex-row items-center flex-1 mr-4">
         <View className="bg-blue-50 w-10 h-10 rounded-full items-center justify-center mr-3">
-          <FileText size={20} color="#2563EB" />
+          {/* Icono FileText reemplazado */}
+          <Ionicons name="document-text-outline" size={20} color="#2563EB" />
         </View>
         <View className="flex-1">
           <Text className="text-gray-900 font-bold text-base">{item.name}</Text>
           <Text className="text-gray-500 text-xs mt-0.5" numberOfLines={1}>{item.description}</Text>
           <View className="flex-row items-center mt-1">
-            <Ruler size={12} color="#6B7280" />
+            {/* Icono Ruler reemplazado */}
+            <Ionicons name="resize-outline" size={12} color="#6B7280" />
             <Text className="text-gray-400 text-[10px] ml-1 uppercase">{item.metric}</Text>
           </View>
         </View>
       </View>
-      <ChevronRight size={20} color="#9CA3AF" />
+      {/* Icono ChevronRight reemplazado */}
+      <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
     </Pressable>
   );
 
@@ -46,7 +50,7 @@ export default function ManageTests({ navigation }: Props) {
             onPress={() => navigation.goBack()} 
             className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm mb-4 border border-gray-100"
           >
-            <ArrowLeft size={20} color="#111827" />
+            <Ionicons name="arrow-back" size={20} color="#111827" />
           </Pressable>
           <Text className="text-gray-900 text-3xl font-bold">Mis Pruebas</Text>
           <Text className="text-gray-500 text-base">Gestiona tu biblioteca de evaluaciones</Text>
@@ -58,7 +62,8 @@ export default function ManageTests({ navigation }: Props) {
             onPress={() => navigation.navigate('AdminCreateTest')}
             className="w-full bg-blue-600 rounded-2xl h-14 flex-row justify-center items-center shadow-lg shadow-blue-300 active:bg-blue-700"
           >
-            <Plus size={22} color="white" style={{ marginRight: 8 }} />
+            {/* Icono Plus reemplazado */}
+            <Ionicons name="add" size={24} color="white" style={{ marginRight: 8 }} />
             <Text className="text-white font-bold text-lg">Crear Nueva Prueba</Text>
           </Pressable>
         </View>

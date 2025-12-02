@@ -9,21 +9,21 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
-  StatusBar
+  StatusBar,
+  StyleSheet // Necesario para la protección del Input
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+// VOLVEMOS A TUS ICONOS ORIGINALES (Son seguros si el Input no explota)
 import { 
   ArrowLeft, 
-  Save, 
-  Plus, 
-  X, 
-  ChevronDown, 
-  Check, 
-  Trash2, 
   Activity, 
-  AlignLeft, 
-  Scale 
+  ChevronDown, 
+  Scale, 
+  Plus, 
+  Trash2, 
+  Save, 
+  Check 
 } from "lucide-react-native";
 import { EntrenadorStackParamList } from "../../navigation/types";
 
@@ -49,12 +49,13 @@ export default function AdminCreateTest({ navigation }: Props) {
 
   const [showMetricModal, setShowMetricModal] = useState(false);
 
+  // Iconos Lucide
   const metricOptions = [
-    { label: "Distancia (metros)", value: "distance", icon: "🏃" },
-    { label: "Tiempo (minutos)", value: "time", icon: "⏱️" },
-    { label: "Peso (kg) / Reps", value: "weight-reps", icon: "🏋️" },
-    { label: "Repeticiones", value: "repetitions", icon: "🔢" },
-    { label: "Personalizado", value: "custom", icon: "⚙️" },
+    { label: "Distancia (metros)", value: "distance" },
+    { label: "Tiempo (minutos)", value: "time" },
+    { label: "Peso (kg) / Reps", value: "weight-reps" },
+    { label: "Repeticiones", value: "repetitions" },
+    { label: "Personalizado", value: "custom" },
   ];
 
   const addRange = () => {
@@ -79,9 +80,6 @@ export default function AdminCreateTest({ navigation }: Props) {
       Alert.alert("Campos incompletos", "Por favor asigna un nombre y un tipo de métrica a la prueba.");
       return;
     }
-    // Lógica de guardado...
-    console.log('Guardando prueba:', { ...formData, ranges });
-    
     Alert.alert("¡Éxito!", "La prueba ha sido creada correctamente.", [
       { text: "Entendido", onPress: () => navigation.goBack() }
     ]);
@@ -89,7 +87,7 @@ export default function AdminCreateTest({ navigation }: Props) {
 
   const getMetricLabel = () => {
     const option = metricOptions.find(o => o.value === formData.metricType);
-    return option ? option.label : "Seleccionar tipo de métrica";
+    return option ? option.label : "Seleccionar métrica";
   };
 
   return (
@@ -101,7 +99,7 @@ export default function AdminCreateTest({ navigation }: Props) {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1"
         >
-          {/* --- HEADER --- */}
+          {/* HEADER CON NATIVEWIND */}
           <View className="px-6 pt-4 pb-2">
             <View className="flex-row items-center mb-4">
               <Pressable 
@@ -112,7 +110,7 @@ export default function AdminCreateTest({ navigation }: Props) {
               </Pressable>
               <View>
                 <Text className="text-slate-900 text-2xl font-extrabold tracking-tight">Nueva Prueba</Text>
-                <Text className="text-slate-500 text-sm font-medium">Configura los parámetros de evaluación</Text>
+                <Text className="text-slate-500 text-sm font-medium">Configura los parámetros</Text>
               </View>
             </View>
           </View>
@@ -122,28 +120,29 @@ export default function AdminCreateTest({ navigation }: Props) {
             showsVerticalScrollIndicator={false}
           >
             
-            {/* --- SECCIÓN 1: DETALLES GENERALES --- */}
+            {/* SECCIÓN 1 */}
             <View className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100 mb-6 space-y-5">
               <View className="flex-row items-center space-x-2 mb-1">
                 <Activity size={20} color="#2563EB" />
                 <Text className="text-slate-900 font-bold text-lg">Información Básica</Text>
               </View>
 
-              {/* Nombre Input */}
+              {/* INPUT PROTEGIDO 1 */}
               <View className="space-y-2">
                 <Text className="text-slate-700 font-semibold text-sm ml-1">Nombre de la Prueba</Text>
-                <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center focus:border-blue-500">
+                <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center">
                   <TextInput
                     placeholder="Ej. Test de Cooper"
                     value={formData.name}
                     onChangeText={(text) => setFormData({ ...formData, name: text })}
-                    className="flex-1 text-slate-900 text-base font-medium"
+                    // 🛡️ AQUÍ ESTÁ EL TRUCO: Style nativo, sin className
+                    style={styles.inputSafe}
                     placeholderTextColor="#94a3b8"
                   />
                 </View>
               </View>
 
-              {/* Descripción Input */}
+              {/* INPUT PROTEGIDO 2 */}
               <View className="space-y-2">
                 <Text className="text-slate-700 font-semibold text-sm ml-1">Instrucciones</Text>
                 <View className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 min-h-[120px]">
@@ -153,13 +152,13 @@ export default function AdminCreateTest({ navigation }: Props) {
                     onChangeText={(text) => setFormData({ ...formData, description: text })}
                     multiline
                     textAlignVertical="top"
-                    className="flex-1 text-slate-900 text-base leading-relaxed"
+                    // 🛡️ AQUÍ ESTÁ EL TRUCO
+                    style={[styles.inputSafe, { height: '100%', textAlignVertical: 'top' }]}
                     placeholderTextColor="#94a3b8"
                   />
                 </View>
               </View>
 
-              {/* Selector de Métrica */}
               <View className="space-y-2">
                 <Text className="text-slate-700 font-semibold text-sm ml-1">Métrica Principal</Text>
                 <Pressable
@@ -176,7 +175,7 @@ export default function AdminCreateTest({ navigation }: Props) {
               </View>
             </View>
 
-            {/* --- SECCIÓN 2: RANGOS --- */}
+            {/* SECCIÓN 2 */}
             <View className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100 space-y-4">
               <View className="flex-row items-center justify-between mb-2">
                 <View className="flex-row items-center space-x-2">
@@ -187,14 +186,13 @@ export default function AdminCreateTest({ navigation }: Props) {
                   onPress={addRange}
                   className="flex-row items-center bg-blue-50 px-3 py-2 rounded-xl active:bg-blue-100"
                 >
-                  <Plus size={16} color="#2563EB" style={{ marginRight: 4 }} strokeWidth={3} />
+                  <Plus size={16} color="#2563EB" style={{ marginRight: 4 }} />
                   <Text className="text-blue-700 font-bold text-xs">Añadir</Text>
                 </Pressable>
               </View>
 
               {ranges.map((range, index) => (
                 <View key={range.id} className="bg-slate-50 rounded-2xl p-4 border border-slate-200 relative">
-                  {/* Delete Button (Absolute top right) */}
                   {ranges.length > 1 && (
                     <Pressable 
                         onPress={() => removeRange(range.id)} 
@@ -209,25 +207,25 @@ export default function AdminCreateTest({ navigation }: Props) {
                   </Text>
 
                   <View className="space-y-3">
-                    {/* Label */}
+                    {/* INPUT PROTEGIDO 3 */}
                     <TextInput
                       placeholder="Nombre del Nivel (Ej. Experto)"
                       value={range.label}
                       onChangeText={(text) => updateRange(range.id, 'label', text)}
-                      className="bg-white border border-slate-200 rounded-xl px-3 h-11 text-sm text-slate-900 font-semibold w-full"
+                      style={[styles.inputSafe, styles.inputBorder]}
                       placeholderTextColor="#94a3b8"
                     />
                     
-                    {/* Min / Max Row */}
                     <View className="flex-row space-x-3">
                       <View className="flex-1 space-y-1">
                         <Text className="text-slate-400 text-[10px] font-bold ml-1">MÍNIMO</Text>
+                        {/* INPUT PROTEGIDO 4 */}
                         <TextInput
                           placeholder="0"
                           keyboardType="numeric"
                           value={range.minValue}
                           onChangeText={(text) => updateRange(range.id, 'minValue', text)}
-                          className="bg-white border border-slate-200 rounded-xl px-3 h-11 text-sm text-slate-900 text-center"
+                          style={[styles.inputSafe, styles.inputBorder, { textAlign: 'center' }]}
                           placeholderTextColor="#cbd5e1"
                         />
                       </View>
@@ -238,12 +236,13 @@ export default function AdminCreateTest({ navigation }: Props) {
 
                       <View className="flex-1 space-y-1">
                         <Text className="text-slate-400 text-[10px] font-bold ml-1">MÁXIMO</Text>
+                        {/* INPUT PROTEGIDO 5 */}
                         <TextInput
                           placeholder="100"
                           keyboardType="numeric"
                           value={range.maxValue}
                           onChangeText={(text) => updateRange(range.id, 'maxValue', text)}
-                          className="bg-white border border-slate-200 rounded-xl px-3 h-11 text-sm text-slate-900 text-center"
+                          style={[styles.inputSafe, styles.inputBorder, { textAlign: 'center' }]}
                           placeholderTextColor="#cbd5e1"
                         />
                       </View>
@@ -255,7 +254,7 @@ export default function AdminCreateTest({ navigation }: Props) {
 
           </ScrollView>
 
-          {/* --- FOOTER ACTIONS --- */}
+          {/* FOOTER */}
           <View className="absolute bottom-0 w-full bg-white border-t border-slate-100 px-6 py-6 pb-8 shadow-2xl">
             <View className="flex-row gap-4">
                 <Pressable 
@@ -278,7 +277,7 @@ export default function AdminCreateTest({ navigation }: Props) {
         </KeyboardAvoidingView>
       </SafeAreaView>
 
-      {/* --- MODAL SELECTOR --- */}
+      {/* MODAL */}
       <Modal
         visible={showMetricModal}
         transparent={true}
@@ -305,7 +304,6 @@ export default function AdminCreateTest({ navigation }: Props) {
                 }`}
               >
                 <View className="flex-row items-center">
-                    <Text className="text-xl mr-3">{option.icon}</Text>
                     <Text className={`text-base font-medium ${
                     formData.metricType === option.value ? 'text-blue-700' : 'text-slate-700'
                     }`}>
@@ -314,7 +312,7 @@ export default function AdminCreateTest({ navigation }: Props) {
                 </View>
                 {formData.metricType === option.value && (
                   <View className="bg-blue-600 rounded-full p-1">
-                    <Check size={12} color="white" strokeWidth={4} />
+                    <Check size={12} color="white" />
                   </View>
                 )}
               </Pressable>
@@ -326,3 +324,23 @@ export default function AdminCreateTest({ navigation }: Props) {
     </View>
   );
 }
+
+// 🛡️ ZONA DE SEGURIDAD: ESTILOS NATIVOS PARA INPUTS
+const styles = StyleSheet.create({
+  inputSafe: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#0F172A',
+    // IMPORTANTE: NativeWind v4 falla calculando padding/border en inputs a veces
+    // Así que lo definimos aquí si es necesario, o dejamos que el contenedor lo maneje.
+  },
+  inputBorder: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 44,
+  }
+});
