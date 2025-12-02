@@ -19,7 +19,7 @@ const existingTests = [
 export default function ManageTests({ navigation }: Props) {
   
   const renderItem = ({ item }: { item: typeof existingTests[0] }) => (
-    <Pressable className="bg-white p-4 rounded-2xl mb-3 flex-row items-center justify-between shadow-sm border border-gray-100">
+    <Pressable onPress={() => navigation.navigate('TestDetail', { test: item })} className="bg-white p-4 rounded-2xl mb-3 flex-row items-center justify-between shadow-sm border border-gray-100">
       <View className="flex-row items-center flex-1 mr-4">
         <View className="bg-blue-50 w-10 h-10 rounded-full items-center justify-center mr-3">
           {/* Icono FileText reemplazado */}

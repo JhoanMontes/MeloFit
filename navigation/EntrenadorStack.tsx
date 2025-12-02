@@ -21,6 +21,8 @@ import MyProfile from "../views/aprendiz/MyProfile";
 import GroupDetail from "../views/entrenador/GroupDetail";
 
 import SendFeedback from "../views/entrenador/SendFeedback";
+
+import TestDetail from "../views/entrenador/TestDetail";
 // Placeholder
 const PlaceholderScreen = ({ route }: any) => (
   <View className="flex-1 justify-center items-center bg-white p-4">
@@ -54,6 +56,7 @@ export default function EntrenadorStack() {
    <Stack.Screen name="SendFeedback" component={SendFeedback} />
 
        <Stack.Screen name="GroupDetail" component={GroupDetail} />
+       <Stack.Screen name="TestDetail" component={TestDetail} />
 
     </Stack.Navigator>
   );

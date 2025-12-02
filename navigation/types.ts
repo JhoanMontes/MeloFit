@@ -38,4 +38,6 @@ MyGroups: undefined;
   SendFeedback: { result: any } | undefined;
 
   GroupDetail: { group: any };
+
+  TestDetail: { test: any };
 };
