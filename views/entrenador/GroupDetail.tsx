@@ -15,6 +15,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { EntrenadorStackParamList } from "../../navigation/types";
 import CustomAlert, { AlertType } from "../../components/CustomAlert"; 
+const CustomAlertAny = CustomAlert as any;
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "GroupDetail">;
 
@@ -64,7 +65,7 @@ export default function GroupDetail({ navigation, route }: Props) {
     setAlertConfig({ visible: true, title, message, type, onConfirm });
   };
 
-  // --- FUNCIONES ---
+  // --- LÓGICA DE GRUPO ---
   const handleRemoveSelected = () => {
     if (selectedMembers.length === 0) return;
     showAlert(
@@ -123,11 +124,20 @@ export default function GroupDetail({ navigation, route }: Props) {
     }
   };
 
+  const handleAssignTest = () => {
+    if (selectedMembers.length === 0) {
+        // Si no hay nadie seleccionado, asumimos "Asignar a todos"
+        navigation.navigate('AssignTestStep1');
+    } else {
+        // Lógica para asignar solo a seleccionados
+        navigation.navigate('AssignTestStep1');
+    }
+  };
+
   return (
     <View className="flex-1 bg-[#F5F5F7]">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
-      <CustomAlert 
+      <CustomAlertAny 
         visible={alertConfig.visible}
         title={alertConfig.title}
         message={alertConfig.message}
@@ -135,86 +145,74 @@ export default function GroupDetail({ navigation, route }: Props) {
         onClose={() => setAlertConfig({ ...alertConfig, visible: false })}
         onConfirm={alertConfig.onConfirm}
       />
+      
 
        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         
-        {/* --- HEADER ESTILIZADO (SIN BORDES) --- */}
-        <View className="bg-white px-5 py-4 flex-row items-center justify-between z-10">
-            <View className="flex-row items-center flex-1">
-                <Pressable onPress={() => navigation.goBack()} className="w-10 h-10 bg-slate-50 rounded-full items-center justify-center mr-4 active:bg-slate-100">
-                    <Ionicons name="arrow-back" size={22} color="#1E293B" />
-                </Pressable>
-                
-                {/* Nombre Estilizado y Código como Badge */}
-                <View className="flex-1">
-                    <Text className="text-xl font-extrabold text-slate-900" numberOfLines={1}>
-                        {groupName}
-                    </Text>
-                    <View className="flex-row mt-1">
-                        <View className="bg-blue-50 px-2 py-0.5 rounded-md">
-                            <Text className="text-[10px] text-blue-700 font-bold tracking-wider">
-                                COD: {group?.code || 'FZ-992'}
-                            </Text>
-                        </View>
-                    </View>
-                </View>
-            </View>
-
-            <Pressable onPress={() => setShowOptionsModal(true)} className="w-10 h-10 bg-slate-50 rounded-full items-center justify-center active:bg-slate-100">
-                <Ionicons name="ellipsis-vertical" size={20} color="#1E293B" />
+        {/* --- HEADER (IGUAL A MANAGE TESTS) --- */}
+        <View className="px-6 pt-4 pb-2">
+          <View className="flex-row items-center justify-between mb-4">
+            <Pressable 
+              onPress={() => navigation.goBack()} 
+              className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm border border-gray-100 active:bg-gray-50"
+            >
+              <Ionicons name="arrow-back" size={20} color="#111827" />
             </Pressable>
+
+            <Pressable 
+              onPress={() => setShowOptionsModal(true)} 
+              className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm border border-gray-100 active:bg-gray-50"
+            >
+              <Ionicons name="ellipsis-horizontal" size={20} color="#111827" />
+            </Pressable>
+          </View>
+          
+          <Text className="text-gray-900 text-3xl font-bold mb-1">{groupName}</Text>
+          <View className="flex-row items-center gap-2 mb-2">
+             <Text className="text-gray-500 text-base font-medium">Detalle del equipo</Text>
+             <View className="bg-blue-100 px-2 py-0.5 rounded-md">
+                <Text className="text-blue-700 text-xs font-bold tracking-widest">{group?.code || 'COD-000'}</Text>
+             </View>
+          </View>
         </View>
 
-        {/* --- CONTENIDO --- */}
-        <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 100 }}>
+        <ScrollView className="flex-1 px-6 pt-2" contentContainerStyle={{ paddingBottom: 100 }}>
           
-          {/* DESCRIPCIÓN (Seamless con el header) */}
-          <View className="bg-white px-6 pb-6 rounded-b-[32px] mb-2 shadow-sm shadow-slate-200/50">
-            <View className="flex-row items-start pt-2">
-                <View className="w-14 h-14 bg-indigo-50 rounded-2xl items-center justify-center mr-4 border border-indigo-100">
-                   <Ionicons name="people" size={28} color="#4F46E5" />
-                </View>
-                <View className="flex-1">
-                    <Text className="text-slate-500 leading-relaxed text-sm font-medium">
-                        {group?.description || 'Este grupo está enfocado en el desarrollo integral del atleta, mejorando fuerza y resistencia.'}
-                    </Text>
-                </View>
-            </View>
+          {/* DESCRIPCIÓN RÁPIDA */}
+          <Text className="text-gray-400 text-sm mb-6 leading-relaxed">
+            {group?.description || 'Sin descripción disponible para este grupo.'}
+          </Text>
+
+          {/* BOTONES DE ACCIÓN (ESTILO MANAGE TESTS) */}
+          <View className="flex-row gap-3 mb-8">
+             <Pressable 
+                onPress={handleAssignTest}
+                className="flex-1 bg-blue-600 h-14 rounded-2xl flex-row items-center justify-center shadow-lg shadow-blue-200 active:scale-[0.98]"
+             >
+                <Ionicons name="paper-plane" size={20} color="white" style={{ marginRight: 8 }} />
+                <Text className="text-white font-bold text-sm">Asignar Prueba</Text>
+             </Pressable>
+
+             <Pressable 
+                onPress={() => setShowAddMemberModal(true)}
+                className="flex-1 bg-white h-14 rounded-2xl flex-row items-center justify-center shadow-sm border border-gray-200 active:bg-gray-50"
+             >
+                <Ionicons name="person-add" size={20} color="#374151" style={{ marginRight: 8 }} />
+                <Text className="text-gray-700 font-bold text-sm">Añadir Atleta</Text>
+             </Pressable>
           </View>
 
-          {/* ACCIONES RÁPIDAS */}
-          <View className="px-6 mt-4">
-            <Text className="text-slate-900 font-bold text-base mb-3 ml-1">Acciones Rápidas</Text>
-            <View className="flex-row gap-3">
-                <Pressable 
-                  onPress={() => navigation.navigate('AssignTestStep1')}
-                  className="flex-1 bg-blue-600 h-14 rounded-2xl flex-row items-center justify-center shadow-lg shadow-blue-200 active:scale-[0.98]"
-                >
-                  <Ionicons name="paper-plane-outline" size={20} color="white" style={{ marginRight: 8 }} />
-                  <Text className="text-white font-bold text-sm">Asignar a Todos</Text>
-                </Pressable>
-
-                <Pressable 
-                   onPress={() => setShowAddMemberModal(true)}
-                   className="flex-1 bg-white border border-slate-200 h-14 rounded-2xl flex-row items-center justify-center active:bg-slate-50"
-                >
-                   <Ionicons name="person-add-outline" size={20} color="#334155" style={{ marginRight: 8 }} />
-                   <Text className="text-slate-700 font-bold text-sm">Añadir Atleta</Text>
-                </Pressable>
-            </View>
-          </View>
-
-          {/* BARRA DE ELIMINACIÓN */}
+          {/* BARRA DE ELIMINACIÓN (CONTEXTUAL) */}
           {selectedMembers.length > 0 && (
-            <View className="px-6 mt-6">
+            <View className="mb-6">
               <View className="bg-red-50 border border-red-100 rounded-2xl p-4 flex-row justify-between items-center shadow-sm">
                 <View className="flex-row items-center">
                   <View className="bg-red-100 p-2 rounded-full mr-3">
                     <Ionicons name="trash-outline" size={20} color="#DC2626" />
                   </View>
                   <View>
-                    <Text className="text-red-900 text-xs font-bold uppercase">Eliminar</Text>
-                    <Text className="text-red-700 text-base font-bold">{selectedMembers.length} seleccionados</Text>
+                    <Text className="text-red-900 text-xs font-bold uppercase">Acción</Text>
+                    <Text className="text-red-700 text-sm font-bold">Eliminar {selectedMembers.length} atletas</Text>
                   </View>
                 </View>
                 <Pressable 
@@ -228,53 +226,61 @@ export default function GroupDetail({ navigation, route }: Props) {
           )}
 
           {/* LISTA DE MIEMBROS */}
-          <View className="px-6 mt-6">
-            <View className="flex-row justify-between items-center mb-4">
-              <Text className="text-slate-900 font-bold text-lg ml-1">Miembros ({members.length})</Text>
-              {selectedMembers.length === 0 && (
-                  <Text className="text-slate-400 text-xs font-medium">Mantén presionado para editar</Text>
-              )}
-            </View>
-
-            <View className="space-y-3">
-              {members.map((member) => {
-                const isSelected = selectedMembers.includes(member.id);
-                return (
-                  <Pressable
-                    key={member.id}
-                    onPress={() => toggleMember(member.id)}
-                    className={`bg-white p-4 rounded-2xl border flex-row items-center justify-between ${
-                      isSelected ? 'border-red-300 bg-red-50/50' : 'border-slate-100'
-                    }`}
-                  >
-                    <View className="flex-row items-center gap-4">
-                        <View className={`w-10 h-10 rounded-full items-center justify-center ${isSelected ? 'bg-red-100' : 'bg-slate-100'}`}>
-                            <Ionicons 
-                                name={isSelected ? "trash-outline" : "person"} 
-                                size={18} 
-                                color={isSelected ? '#DC2626' : '#94A3B8'} 
-                            />
-                        </View>
-                        <View>
-                            <Text className={`font-bold text-base ${isSelected ? 'text-red-900' : 'text-slate-900'}`}>{member.name}</Text>
-                            <Text className="text-slate-500 text-xs font-medium">{member.level} • {member.status}</Text>
-                        </View>
-                    </View>
-
-                    <View className={`w-6 h-6 rounded-full border items-center justify-center ${
-                      isSelected ? 'bg-red-600 border-red-600' : 'border-slate-200 bg-white'
-                    }`}>
-                      {isSelected && <Ionicons name="close" size={14} color="white" />}
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
+          <View className="flex-row justify-between items-center mb-4">
+            <Text className="text-gray-900 font-bold text-xl">Atletas ({members.length})</Text>
+            {selectedMembers.length === 0 && (
+                <Text className="text-gray-400 text-xs font-medium">Mantén pulsado para editar</Text>
+            )}
           </View>
+
+          <View className="space-y-3">
+            {members.map((member) => {
+              const isSelected = selectedMembers.includes(member.id);
+              return (
+                <Pressable
+                  key={member.id}
+                  onPress={() => toggleMember(member.id)}
+                  // TARJETA IDÉNTICA A MANAGE TESTS
+                  className={`p-4 rounded-2xl flex-row items-center justify-between shadow-sm border ${
+                    isSelected ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'
+                  }`}
+                >
+                  <View className="flex-row items-center flex-1 mr-4">
+                    <View className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${
+                        isSelected ? 'bg-red-100' : 'bg-gray-50'
+                    }`}>
+                      <Ionicons 
+                        name={isSelected ? "trash-outline" : "person-outline"} 
+                        size={20} 
+                        color={isSelected ? '#DC2626' : '#6B7280'} 
+                      />
+                    </View>
+                    <View className="flex-1">
+                      <Text className={`font-bold text-base ${isSelected ? 'text-red-900' : 'text-gray-900'}`}>
+                        {member.name}
+                      </Text>
+                      <View className="flex-row items-center mt-0.5">
+                        <Ionicons name="fitness-outline" size={12} color="#9CA3AF" />
+                        <Text className="text-gray-400 text-xs ml-1">{member.level}</Text>
+                      </View>
+                    </View>
+                  </View>
+                  
+                  {isSelected ? (
+                     <Ionicons name="close-circle" size={24} color="#DC2626" />
+                  ) : (
+                     <Ionicons name="chevron-forward" size={20} color="#E5E7EB" />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+
         </ScrollView>
       </SafeAreaView>
 
       {/* --- MODALES --- */}
+      {/* IMPORTANTE: Los Inputs aquí usan styles.safeInput para evitar el crash */}
       
       {/* 1. OPCIONES */}
       <Modal visible={showOptionsModal} transparent animationType="fade" onRequestClose={() => setShowOptionsModal(false)}>
@@ -307,11 +313,13 @@ export default function GroupDetail({ navigation, route }: Props) {
         <View className="flex-1 bg-black/50 justify-center px-6">
             <View className="bg-white rounded-3xl p-6 shadow-xl">
                 <Text className="text-lg font-bold text-slate-900 mb-4 text-center">Editar Nombre</Text>
+                {/* FIX CRASH: style nativo */}
                 <TextInput 
                     value={groupName}
                     onChangeText={setGroupName}
                     style={styles.safeInput}
                     placeholder="Nombre del grupo"
+                    placeholderTextColor="#9CA3AF"
                 />
                 <View className="flex-row gap-3 mt-6">
                     <Pressable onPress={() => setShowEditNameModal(false)} className="flex-1 h-12 justify-center items-center rounded-xl border border-slate-200">
@@ -337,11 +345,13 @@ export default function GroupDetail({ navigation, route }: Props) {
                 </View>
                 <Text className="text-slate-500 mb-2 font-medium ml-1">Buscar por Documento</Text>
                 <View className="flex-row gap-3 mb-6">
+                    {/* FIX CRASH: style nativo */}
                     <TextInput 
                         value={searchDoc}
                         onChangeText={setSearchDoc}
-                        placeholder="Ej. 1001"
+                        placeholder="Ej. 100123456"
                         keyboardType="numeric"
+                        placeholderTextColor="#9CA3AF"
                         style={[styles.safeInput, { flex: 1, marginBottom: 0 }]}
                     />
                     <Pressable onPress={handleSearchAthlete} className="bg-blue-600 w-14 rounded-xl items-center justify-center">
@@ -384,16 +394,17 @@ export default function GroupDetail({ navigation, route }: Props) {
   );
 }
 
+// ESTILOS SEGUROS
 const styles = StyleSheet.create({
   safeInput: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E7EB',
     borderRadius: 12,
     paddingHorizontal: 16,
     height: 52,
     fontSize: 16,
-    color: '#0F172A',
+    color: '#111827',
     marginBottom: 0
   }
 });

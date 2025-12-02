@@ -20,6 +20,7 @@ import MyProfile from "../views/aprendiz/MyProfile";
 
 import GroupDetail from "../views/entrenador/GroupDetail";
 
+import SendFeedback from "../views/entrenador/SendFeedback";
 // Placeholder
 const PlaceholderScreen = ({ route }: any) => (
   <View className="flex-1 justify-center items-center bg-white p-4">
@@ -50,7 +51,7 @@ export default function EntrenadorStack() {
       <Stack.Screen name="Notifications" component={Notifications} />
       <Stack.Screen name="Profile" component={MyProfile} options={{ headerShown: false }} />
 
-      <Stack.Screen name="SendFeedback" component={PlaceholderScreen} options={{ headerShown: true, title: 'Enviar Feedback' }} />
+   <Stack.Screen name="SendFeedback" component={SendFeedback} />
 
        <Stack.Screen name="GroupDetail" component={GroupDetail} />
 
