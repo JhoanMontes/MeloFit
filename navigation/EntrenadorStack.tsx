@@ -12,7 +12,7 @@ import AssignTestStep1 from "../views/entrenador/AssignTestStep1";
 import AssignTestStep2 from "../views/entrenador/AssignTestStep2";
 import CoachReports from "../views/entrenador/CoachReports";
 import FeedbackResults from "../views/entrenador/FeedbackResults";
-
+import MyGroups from "../views/entrenador/MyGroups";
 
 import Notifications from "../views/aprendiz/Notifications";
 import MyProfile from "../views/aprendiz/MyProfile";
@@ -43,7 +43,7 @@ export default function EntrenadorStack() {
       <Stack.Screen name="AssignTestStep2" component={AssignTestStep2} />
 
       <Stack.Screen name="CoachReports" component={CoachReports} />
-      
+        <Stack.Screen name="MyGroups" component={MyGroups} />
  
       <Stack.Screen name="FeedbackResults" component={FeedbackResults} />
 

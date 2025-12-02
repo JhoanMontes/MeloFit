@@ -1,4 +1,3 @@
-// views/auth/LoginScreen.tsx
 import React, { useState } from "react";
 import { 
   View, 
@@ -6,17 +5,16 @@ import {
   TextInput, 
   Pressable, 
   StatusBar, 
-  Alert,
   KeyboardAvoidingView, 
   Platform,
   ScrollView 
-
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context"; // 
+import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ArrowLeft, Dumbbell, Check } from "lucide-react-native";
 import { AuthStackParamList } from "../../navigation/types";
 import { useAuth } from "../../context/AuthContext";
+import CustomAlert, { AlertType } from "../../components/CustomAlert"; 
 
 type Props = NativeStackScreenProps<AuthStackParamList, "Login">;
 
@@ -27,31 +25,52 @@ export default function LoginScreen({ navigation }: Props) {
     email: "",
     password: "",
   });
-
   const [isCoach, setIsCoach] = useState(false);
 
- const handleLogin = async () => {
-  if (!formData.email || !formData.password) {
-    Alert.alert("Error", "Ingresa correo y contraseña.");
-    return;
-  }
+  // ESTADO PARA EL MODAL
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info" as AlertType
+  });
 
-  const { success, error } = await login(formData.email, formData.password);
+  const showAlert = (title: string, message: string, type: AlertType = "error") => {
+    setAlertConfig({ visible: true, title, message, type });
+  };
 
-  if (!success) {
-    Alert.alert("Error al iniciar sesión", "Credenciales incorrectas, por favor verifique su información");
-    return;
-  }
-};
+  const handleLogin = async () => {
+    if (!formData.email || !formData.password) {
+      showAlert("Campos incompletos", "Por favor ingresa tu correo y contraseña.", "warning");
+      return;
+    }
 
+    // Simulamos el login (o usamos el real si ya descomentaste Supabase)
+    // Como estamos en modo diseño/híbrido, aquí deberías usar signIn() si quieres navegar directo
+    // Pero si usas la función login() real, maneja el error así:
+    
+    const { success, error } = await login(formData.email, formData.password);
+
+    if (!success) {
+      showAlert("Error de acceso", "Credenciales incorrectas. Verifica tu información.", "error");
+      return;
+    }
+  };
 
   return (
     <View className="flex-1 bg-white">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
-       {/* USO CON STYLE NATIVO PARA EVITAR ERRORES VISUALES */}
-       <SafeAreaView style={{ flex: 1 }}>
-        
+      {/* MODAL RENDERIZADO */}
+      <CustomAlert 
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onClose={() => setAlertConfig({ ...alertConfig, visible: false })}
+      />
+
+      <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1"
@@ -62,7 +81,7 @@ export default function LoginScreen({ navigation }: Props) {
             keyboardShouldPersistTaps="handled"
           >
             
-            {/* --- HEADER NAV --- */}
+            {/* HEADER */}
             <View className="px-6 pt-4 pb-2">
               <Pressable 
                 onPress={() => navigation.goBack()} 
@@ -72,7 +91,7 @@ export default function LoginScreen({ navigation }: Props) {
               </Pressable>
             </View>
 
-            {/* --- TEXTO DE BIENVENIDA --- */}
+            {/* TITULO */}
             <View className="px-6 mt-6 mb-8">
               <Text className="text-slate-900 text-3xl font-extrabold tracking-tight mb-2">
                 Bienvenido de Nuevo
@@ -82,14 +101,10 @@ export default function LoginScreen({ navigation }: Props) {
               </Text>
             </View>
 
-            {/* --- FORMULARIO --- */}
+            {/* FORMULARIO */}
             <View className="px-6 space-y-5">
-              
-              {/* Email Input */}
               <View className="space-y-2">
-                <Text className="text-slate-700 font-semibold text-sm ml-1">
-                  Correo Electrónico
-                </Text>
+                <Text className="text-slate-700 font-semibold text-sm ml-1">Correo Electrónico</Text>
                 <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center focus:border-blue-500">
                   <TextInput
                     placeholder="juan@ejemplo.com"
@@ -103,11 +118,8 @@ export default function LoginScreen({ navigation }: Props) {
                 </View>
               </View>
 
-              {/* Password Input */}
               <View className="space-y-2">
-                <Text className="text-slate-700 font-semibold text-sm ml-1">
-                  Contraseña
-                </Text>
+                <Text className="text-slate-700 font-semibold text-sm ml-1">Contraseña</Text>
                 <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center">
                   <TextInput
                     placeholder="••••••••"
@@ -119,13 +131,10 @@ export default function LoginScreen({ navigation }: Props) {
                   />
                 </View>
                 <Pressable className="items-end pt-1">
-                  <Text className="text-blue-600 text-sm font-bold">
-                    ¿Olvidaste tu contraseña?
-                  </Text>
+                  <Text className="text-blue-600 text-sm font-bold">¿Olvidaste tu contraseña?</Text>
                 </Pressable>
               </View>
 
-              {/* Coach Selector */}
               <Pressable 
                 onPress={() => setIsCoach(!isCoach)}
                 className={`flex-row items-center mt-4 p-4 rounded-2xl border transition-colors ${
@@ -140,38 +149,27 @@ export default function LoginScreen({ navigation }: Props) {
                   {isCoach && <Check size={14} color="white" strokeWidth={4} />}
                 </View>
                 <View className="flex-1">
-                  <Text className={`text-sm font-bold ${isCoach ? "text-blue-800" : "text-slate-700"}`}>
-                    Modo Entrenador
-                  </Text>
-                  <Text className="text-slate-500 text-xs">
-                    Accede a herramientas de gestión
-                  </Text>
+                  <Text className={`text-sm font-bold ${isCoach ? "text-blue-800" : "text-slate-700"}`}>Modo Entrenador</Text>
+                  <Text className="text-slate-500 text-xs">Accede a herramientas de gestión</Text>
                 </View>
                 {isCoach && <Dumbbell size={20} color="#2563eb" />}
               </Pressable>
-
             </View>
 
-            {/* --- ESPACIADOR FLEXIBLE --- */}
             <View className="flex-1 min-h-[40px]" />
 
-            {/* --- FOOTER ACTIONS --- */}
             <View className="px-6 pb-8 pt-4">
               <Pressable
                 onPress={handleLogin}
                 className="w-full bg-blue-600 rounded-2xl h-14 justify-center items-center shadow-lg shadow-blue-600/25 active:opacity-90 active:scale-[0.98]"
               >
-                <Text className="text-white text-lg font-bold tracking-wide">
-                  Iniciar Sesión
-                </Text>
+                <Text className="text-white text-lg font-bold tracking-wide">Iniciar Sesión</Text>
               </Pressable>
 
               <View className="flex-row justify-center items-center mt-6 space-x-1">
                 <Text className="text-slate-500 font-medium">¿No tienes una cuenta?</Text>
                 <Pressable onPress={() => navigation.navigate("RegistrationStep1")}>
-                  <Text className="text-blue-600 font-bold ml-1 p-1">
-                    Regístrate
-                  </Text>
+                  <Text className="text-blue-600 font-bold ml-1 p-1">Regístrate</Text>
                 </Pressable>
               </View>
             </View>
