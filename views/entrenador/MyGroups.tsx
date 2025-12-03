@@ -38,19 +38,16 @@ export default function MyGroups({ navigation }: Props) {
       let isActive = true;
 
       const fetchGroups = async () => {
-        console.log("🔄 Iniciando búsqueda de grupos...");
+        console.log("buscando grupos.");
 
         // 1. CORRECCIÓN PRINCIPAL: Si no hay user, apagamos loading y salimos
         if (!user) {
-          console.log("⚠️ No se detectó usuario logueado en useAuth");
+          console.log("No se detectó usuario logueado en useAuth");
           setLoading(false);
           return;
         }
 
-        try {
-          // A. Buscamos el ID numérico del entrenador
-          console.log("📍 Buscando datos del entrenador para auth_id:", user.id);
-          
+        try {          
           const { data: trainerData, error: trainerError } = await supabase
             .from('usuario')
             .select('no_documento')
@@ -67,7 +64,7 @@ export default function MyGroups({ navigation }: Props) {
             throw new Error("Entrenador no encontrado");
           }
 
-          console.log("✅ Entrenador encontrado. ID:", trainerData.no_documento);
+          console.log("documento entrenador:", trainerData.no_documento);
 
           // B. Buscamos los grupos
           const { data: groupsData, error: groupsError } = await supabase
@@ -77,24 +74,21 @@ export default function MyGroups({ navigation }: Props) {
             .order('fecha_creacion', { ascending: false });
 
           if (groupsError) {
-            console.error("❌ Error buscando grupos:", groupsError.message);
+            console.error("Error buscando grupos:", groupsError.message);
             throw groupsError;
           }
 
-          console.log("✅ Grupos encontrados:", groupsData?.length);
+          console.log("Grupos encontrados:", groupsData?.length);
 
           if (isActive && groupsData) {
             setGroups(groupsData);
           }
 
         } catch (error: any) {
-          console.error("💥 Error General:", error.message);
-          // Opcional: Mostrar alerta si falla
-          // Alert.alert("Error", "No se pudieron cargar los datos");
+          console.error("Error General:", error.message);
         } finally {
-          // ESTO ASEGURA QUE EL LOADING SE APAGUE SIEMPRE
+
           if (isActive) {
-            console.log("🏁 Finalizando carga (setLoading false)");
             setLoading(false);
           }
         }
