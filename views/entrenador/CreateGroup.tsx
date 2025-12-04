@@ -125,7 +125,7 @@ export default function CreateGroup({ navigation }: Props) {
       if (insertError) throw insertError;
 
       Alert.alert("¡Grupo Creado!", `Código: ${uniqueCode}\nEl grupo "${groupName}" está listo.`, [
-        { text: "Ok", onPress: () => navigation.navigate('Dashboard') } // O navigation.goBack()
+        { text: "Ok", onPress: () => navigation.navigate('MyGroups') } // O navigation.goBack()
       ]);
 
     } catch (error: any) {

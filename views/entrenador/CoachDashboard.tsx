@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { 
   View, 
   Text, 
   ScrollView, 
   Pressable, 
   Modal, 
-  StatusBar 
+  StatusBar,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useFocusEffect } from "@react-navigation/native"; // Importante para recargar al volver
 import { 
   Bell, 
   User, 
@@ -20,7 +22,6 @@ import {
   LogOut, 
   ChevronRight, 
   ClipboardCheck, 
-  Clock,
   ArrowRight
 } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
@@ -29,13 +30,28 @@ import { supabase } from "../../lib/supabase";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "Dashboard">;
 
+// 1. PALETA DE COLORES FIJA (Para asignar visualmente sin guardar en BD)
+const CARD_COLORS = [
+  { bg: 'bg-indigo-100', iconColor: '#4338ca' }, // Azul Indigo
+  { bg: 'bg-emerald-100', iconColor: '#059669' }, // Verde Esmeralda
+  { bg: 'bg-orange-100', iconColor: '#ea580c' },  // Naranja
+  { bg: 'bg-blue-100', iconColor: '#2563EB' },    // Azul Claro
+  { bg: 'bg-purple-100', iconColor: '#9333EA' },  // Violeta
+];
+
 export default function CoachDashboard({ navigation }: Props) {
   const { logout, user } = useAuth();
   const insets = useSafeAreaInsets();
+  
+  // Estados UI
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [nombre, setNombre] = useState<String>("Entrenador");
-  const [loading, setLoading] = useState(true);
+  
+  // Estados Datos
+  const [recentGroups, setRecentGroups] = useState<any[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(true);
 
+  // 2. CARGAR NOMBRE (Solo una vez al montar)
   useEffect(() => {
     const fetchUserData = async () => {
       if (!user?.id) return;
@@ -46,38 +62,75 @@ export default function CoachDashboard({ navigation }: Props) {
           .eq('auth_id', user.id)  
           .single();
 
-        if (error) console.log('Error buscando usuario:', error.message);
-
         if (data) {
           const primerNombre = data.nombre_completo.trim().split(" ")[0];
           setNombre(primerNombre.charAt(0).toUpperCase() + primerNombre.slice(1).toLowerCase()); 
         }
       } catch (e) {
         console.error(e);
-      } finally {
-        setLoading(false);
       }
     };
     fetchUserData();
   }, [user]);
 
+  // 3. CARGAR GRUPOS (Con useFocusEffect para que se actualice al crear uno nuevo y volver)
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      const fetchRecentGroups = async () => {
+        if (!user) return;
+        try {
+          // A. Obtener ID del entrenador
+          const { data: trainerData } = await supabase
+            .from('usuario')
+            .select('no_documento')
+            .eq('auth_id', user.id)
+            .single();
+
+          if (!trainerData) return;
+
+          // B. Obtener los 3 grupos más recientes con conteo de miembros
+          // select('*, atleta_has_grupo(count)') es un truco de Supabase para contar relaciones
+          const { data, error } = await supabase
+            .from('grupo')
+            .select('*, atleta_has_grupo(count)') 
+            .eq('entrenador_no_documento', trainerData.no_documento)
+            .order('fecha_creacion', { ascending: false })
+            .limit(3); // LIMITAMOS A 3
+
+          if (error) throw error;
+
+          if (isActive && data) {
+            // Formateamos para limpiar el objeto count
+            const formattedGroups = data.map(g => ({
+              ...g,
+              // Supabase devuelve count como arr: [{count: 5}] o solo count dependiendo la versión
+              members: g.atleta_has_grupo?.[0]?.count || 0 
+            }));
+            setRecentGroups(formattedGroups);
+          }
+        } catch (error) {
+          console.error("Error fetching dashboard groups:", error);
+        } finally {
+          if (isActive) setLoadingGroups(false);
+        }
+      };
+
+      fetchRecentGroups();
+
+      return () => { isActive = false; };
+    }, [user])
+  );
+
+  // Datos Mock para resultados (Esto lo dejaremos estático por ahora como pediste)
   const pendingResults = [
     { id: 1, athleteName: 'Alex Johnson', test: 'Test de Cooper', result: '2850m', time: '2h' },
     { id: 2, athleteName: 'Maria García', test: 'Sentadilla', result: '90 kg × 8', time: '5h' },
     { id: 3, athleteName: 'David Lee', test: 'Peso Muerto', result: '110 kg × 6', time: '1d' },
-    { id: 4, athleteName: 'Sarah Miller', test: 'Carrera 5km', result: '24:30', time: '1d' },
-    { id: 5, athleteName: 'Carlos Ruiz', test: 'Flexiones', result: '45 reps', time: '2d' },
-  ];
-  const recentResults = pendingResults; 
-  
-  const groups = [
-    { name: 'Fuerza Avanzada', members: 12, color: 'bg-indigo-100', iconColor: '#4338ca' },
-    { name: 'Principiantes', members: 8, color: 'bg-emerald-100', iconColor: '#059669' },
-    { name: 'Resistencia', members: 6, color: 'bg-orange-100', iconColor: '#ea580c' },
-    { name: 'Velocidad', members: 10, color: 'bg-blue-100', iconColor: '#2563EB' },
-    { name: 'Hipertrofia', members: 15, color: 'bg-purple-100', iconColor: '#9333EA' },
   ];
 
+  // Componente Modal Perfil
   const ProfileModal = () => (
     <Modal 
       animationType="fade" 
@@ -185,7 +238,7 @@ export default function CoachDashboard({ navigation }: Props) {
             </Pressable>
           </View>
 
-          {/* POR REVISAR */}
+          {/* POR REVISAR (MOCK) */}
           <View className="mb-8">
             <View className="flex-row items-center justify-between px-6 mb-4">
               <View className="flex-row items-center gap-x-2">
@@ -204,7 +257,7 @@ export default function CoachDashboard({ navigation }: Props) {
               showsHorizontalScrollIndicator={false} 
               contentContainerStyle={{ paddingHorizontal: 24 }}
             >
-              {recentResults.map((r, index) => (
+              {pendingResults.map((r, index) => (
                 <Pressable 
                   key={index} 
                   onPress={() => navigation.navigate('SendFeedback', { result: r })} 
@@ -236,52 +289,70 @@ export default function CoachDashboard({ navigation }: Props) {
             </ScrollView>
           </View>
 
-          {/* MIS GRUPOS */}
+          {/* MIS GRUPOS (REALES) */}
           <View className="mb-4">
             <View className="flex-row items-center justify-between px-6 mb-4">
               <Text className="text-slate-900 text-lg font-bold">Mis Grupos</Text>
               
-              {/* Enlace a la página completa de grupos */}
               <Pressable onPress={() => navigation.navigate('MyGroups')}>
                 <Text className="text-blue-600 text-sm font-bold">Ver todos</Text>
               </Pressable>
             </View>
 
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
-              contentContainerStyle={{ paddingHorizontal: 24 }}
-            >
-              {/* SOLO MOSTRAMOS LOS PRIMEROS 3 GRUPOS PARA RESUMIR */}
-              {groups.slice(0, 3).map((group, index) => (
-                <Pressable 
-                  key={index}
-                  onPress={() => navigation.navigate('GroupDetail', { group })}
-                  className={`p-5 rounded-[28px] mr-3 w-40 h-40 justify-between active:opacity-80 ${group.color}`}
-                >
-                  <View className="bg-white/60 w-10 h-10 rounded-full items-center justify-center self-start">
-                    <Users size={20} color={group.iconColor} />
-                  </View>
-                  <View>
-                    <Text className="text-slate-900 font-bold text-base leading-5 mb-1" numberOfLines={2}>
-                      {group.name}
-                    </Text>
-                    <Text className="text-slate-600 text-xs font-medium">
-                      {group.members} atletas
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
-              
-              {/* Tarjeta para crear nuevo (Siempre visible al final del resumen) */}
-              <Pressable 
-                onPress={() => navigation.navigate('CreateGroup')}
-                className="p-5 rounded-[28px] mr-3 w-40 h-40 justify-center items-center border-2 border-dashed border-slate-300 active:bg-slate-50"
+            {loadingGroups ? (
+               <View className="pl-6">
+                 <ActivityIndicator size="small" color="#2563EB" />
+               </View>
+            ) : (
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false} 
+                contentContainerStyle={{ paddingHorizontal: 24 }}
               >
-                <Plus size={32} color="#cbd5e1" />
-                <Text className="text-slate-400 text-xs font-bold mt-2">Crear Nuevo</Text>
-              </Pressable>
-            </ScrollView>
+                {/* LISTADO DE GRUPOS REALES */}
+                {recentGroups.length > 0 ? (
+                  recentGroups.map((group, index) => {
+                    // 4. ASIGNACIÓN DINÁMICA DE COLOR
+                    // Usamos el operador módulo (%) para rotar los colores si hay más grupos que colores
+                    const colorTheme = CARD_COLORS[index % CARD_COLORS.length];
+
+                    return (
+                      <Pressable 
+                        key={group.codigo}
+                        onPress={() => navigation.navigate('GroupDetail', { group })}
+                        className={`p-5 rounded-[28px] mr-3 w-40 h-40 justify-between active:opacity-80 ${colorTheme.bg}`}
+                      >
+                        <View className="bg-white/60 w-10 h-10 rounded-full items-center justify-center self-start">
+                          <Users size={20} color={colorTheme.iconColor} />
+                        </View>
+                        <View>
+                          <Text className="text-slate-900 font-bold text-base leading-5 mb-1" numberOfLines={2}>
+                            {group.nombre}
+                          </Text>
+                          <Text className="text-slate-600 text-xs font-medium">
+                            {/* Usamos el conteo que trajimos o 0 */}
+                            {group.members || 0} atletas
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })
+                ) : (
+                  <View className="mr-4 justify-center">
+                    <Text className="text-slate-400 text-xs italic">No hay grupos recientes</Text>
+                  </View>
+                )}
+                
+                {/* TARJETA PARA CREAR NUEVO (Siempre al final) */}
+                <Pressable 
+                  onPress={() => navigation.navigate('CreateGroup')}
+                  className="p-5 rounded-[28px] mr-3 w-40 h-40 justify-center items-center border-2 border-dashed border-slate-300 active:bg-slate-50"
+                >
+                  <Plus size={32} color="#cbd5e1" />
+                  <Text className="text-slate-400 text-xs font-bold mt-2">Crear Nuevo</Text>
+                </Pressable>
+              </ScrollView>
+            )}
           </View>
 
         </ScrollView>

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { 
   View, 
   Text, 
@@ -8,67 +8,140 @@ import {
   Modal,
   TextInput,
   StyleSheet,
-  Alert
+  Alert,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { EntrenadorStackParamList } from "../../navigation/types";
 
+// IMPORTAR SUPABASE
+import { supabase } from "../../lib/supabase";
+
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "TestDetail">;
 
-// Mock de niveles para visualizar datos
-const mockLevels = [
-  { label: 'Principiante', min: '0', max: '1000' },
-  { label: 'Intermedio', min: '1001', max: '2000' },
-  { label: 'Avanzado', min: '2001', max: '3000' },
-  { label: 'Elite', min: '3001', max: '5000' },
-];
+// Diccionario para mostrar nombres bonitos de métricas
+const METRIC_LABELS: Record<string, string> = {
+  distance: "Distancia",
+  time_min: "Tiempo (min)",
+  time_sec: "Tiempo (seg)",
+  weight_reps: "Peso / Reps",
+  repetitions: "Repeticiones",
+  custom: "Personalizado"
+};
 
 export default function TestDetail({ navigation, route }: Props) {
   const { test } = route.params || {};
   
-  // Estados
-  const [testName, setTestName] = useState(test?.name || 'Prueba Sin Nombre');
-  const [description, setDescription] = useState(test?.description || '');
+  // Estados de carga
+  const [loading, setLoading] = useState(false);
+
+  // Estados de datos
+  const [testName, setTestName] = useState(test?.nombre || 'Prueba Sin Nombre');
+  const [description, setDescription] = useState(test?.descripcion || '');
   
+  // Parsear los niveles (JSONB) para usarlos en la UI
+  // La DB devuelve: { nombre: "x", min: 1, max: 10 }
+  // La UI espera: { label: "x", min: 1, max: 10 }
+  const levels = useMemo(() => {
+    if (!test?.niveles) return [];
+    // Si viene como string (a veces pasa en logs), lo parseamos
+    const nivelesArray = typeof test.niveles === 'string' ? JSON.parse(test.niveles) : test.niveles;
+    
+    return nivelesArray.map((l: any) => ({
+        label: l.nombre,
+        min: l.min,
+        max: l.max
+    }));
+  }, [test]);
+
   // Modales
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
-  // --- ACCIONES ---
-  const handleDeleteTest = () => {
+  // --- ACCIÓN: ELIMINAR ---
+  const handleDeleteTest = async () => {
     setShowOptionsModal(false);
     Alert.alert(
         "¿Eliminar Prueba?", 
-        "Esta acción eliminará la prueba y todos los historiales asociados. No se puede deshacer.", 
+        "Esta acción eliminará la prueba permanentemente. No se puede deshacer.", 
         [
             { text: "Cancelar", style: "cancel" },
             { 
                 text: "Eliminar", 
                 style: "destructive", 
-                onPress: () => navigation.goBack() 
+                onPress: async () => {
+                    try {
+                        setLoading(true);
+                        const { error } = await supabase
+                            .from('prueba')
+                            .delete()
+                            .eq('id', test.id);
+
+                        if (error) throw error;
+
+                        navigation.goBack();
+                    } catch (err: any) {
+                        Alert.alert("Error", "No se pudo eliminar: " + err.message);
+                    } finally {
+                        setLoading(false);
+                    }
+                } 
             }
         ]
     );
   };
 
-  const handleUpdateTest = () => {
-    if (testName.trim() === "") return;
-    setShowEditModal(false);
-    // Aquí iría la lógica de Supabase
-    Alert.alert("Éxito", "La prueba ha sido actualizada.");
+  // --- ACCIÓN: ACTUALIZAR ---
+  const handleUpdateTest = async () => {
+    if (testName.trim() === "") {
+        Alert.alert("Error", "El nombre no puede estar vacío");
+        return;
+    }
+
+    try {
+        setLoading(true);
+        
+        const { error } = await supabase
+            .from('prueba')
+            .update({ 
+                nombre: testName,
+                descripcion: description
+            })
+            .eq('id', test.id);
+
+        if (error) throw error;
+
+        setShowEditModal(false);
+        Alert.alert("Éxito", "La prueba ha sido actualizada.");
+        
+        // NOTA: Como cambiamos el nombre localmente en el estado 'testName', 
+        // la UI se ve actualizada, pero si vuelves atrás, la lista se actualizará 
+        // gracias al useFocusEffect que pusimos en la pantalla anterior.
+
+    } catch (err: any) {
+        Alert.alert("Error", err.message);
+    } finally {
+        setLoading(false);
+    }
   };
 
   return (
     <View className="flex-1 bg-[#F5F5F7]">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
+      {loading && (
+        <View className="absolute inset-0 bg-black/20 z-50 items-center justify-center">
+            <ActivityIndicator size="large" color="#2563EB" />
+        </View>
+      )}
+
        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         
-        {/* --- HEADER (ESTILO MANAGE TESTS) --- */}
+        {/* --- HEADER --- */}
         <View className="px-6 pt-4 pb-2">
-          {/* Fila de Botones (Atrás y Opciones) */}
+          {/* Fila de Botones */}
           <View className="flex-row items-center justify-between mb-4">
             <Pressable 
                 onPress={() => navigation.goBack()} 
@@ -92,7 +165,9 @@ export default function TestDetail({ navigation, route }: Props) {
           <View className="flex-row items-center gap-2 mb-2">
              <Text className="text-gray-500 text-base font-medium">Detalles de evaluación</Text>
              <View className="bg-blue-100 px-2 py-0.5 rounded-md">
-                <Text className="text-blue-700 text-xs font-bold tracking-widest uppercase">{test?.metric || 'GENERAL'}</Text>
+                <Text className="text-blue-700 text-xs font-bold tracking-widest uppercase">
+                    {METRIC_LABELS[test?.tipo_metrica] || test?.tipo_metrica || 'GENERAL'}
+                </Text>
              </View>
           </View>
         </View>
@@ -114,40 +189,47 @@ export default function TestDetail({ navigation, route }: Props) {
             </View>
           </View>
 
-          {/* TARJETA 2: ESTADÍSTICAS RÁPIDAS (Visual) */}
+          {/* TARJETA 2: ESTADÍSTICAS RÁPIDAS (Visual - Pendiente de conectar real) */}
           <View className="flex-row gap-3 mb-6">
             <View className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
                 <Text className="text-gray-400 text-xs font-bold uppercase mb-1">Total Asignaciones</Text>
-                <Text className="text-2xl font-extrabold text-gray-900">24 <Text className="text-sm font-medium text-gray-400">atletas</Text></Text>
+                <Text className="text-2xl font-extrabold text-gray-900">-- <Text className="text-sm font-medium text-gray-400">atletas</Text></Text>
             </View>
             <View className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
                 <Text className="text-gray-400 text-xs font-bold uppercase mb-1">Rendimiento</Text>
-                <Text className="text-2xl font-extrabold text-gray-900">Top <Text className="text-sm font-medium text-gray-400">15%</Text></Text>
+                <Text className="text-2xl font-extrabold text-gray-900">--% <Text className="text-sm font-medium text-gray-400">promedio</Text></Text>
             </View>
           </View>
 
-          {/* LISTA: NIVELES DE EVALUACIÓN */}
+          {/* LISTA: NIVELES DE EVALUACIÓN (REALES) */}
           <Text className="text-gray-900 font-bold text-xl mb-4">Niveles Configurados</Text>
-          <View className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-                {/* Header Tabla */}
-                <View className="flex-row bg-gray-50 p-4 border-b border-gray-100">
-                    <Text className="flex-1 text-xs font-bold text-gray-400 uppercase">Nivel</Text>
-                    <Text className="flex-1 text-xs font-bold text-gray-400 uppercase text-center">Mínimo</Text>
-                    <Text className="flex-1 text-xs font-bold text-gray-400 uppercase text-center">Máximo</Text>
-                </View>
-                
-                {/* Filas */}
-                {mockLevels.map((level, index) => (
-                    <View key={index} className="flex-row p-4 border-b border-gray-50 items-center">
-                        <View className="flex-1 flex-row items-center gap-2">
-                            <View className={`w-2 h-2 rounded-full ${index === 0 ? 'bg-green-500' : index === 3 ? 'bg-purple-500' : 'bg-blue-500'}`} />
-                            <Text className="font-bold text-gray-700 text-sm">{level.label}</Text>
-                        </View>
-                        <Text className="flex-1 text-center text-gray-500 font-medium">{level.min}</Text>
-                        <Text className="flex-1 text-center text-gray-500 font-medium">{level.max}</Text>
+          
+          {levels.length > 0 ? (
+              <View className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+                    {/* Header Tabla */}
+                    <View className="flex-row bg-gray-50 p-4 border-b border-gray-100">
+                        <Text className="flex-1 text-xs font-bold text-gray-400 uppercase">Nivel</Text>
+                        <Text className="flex-1 text-xs font-bold text-gray-400 uppercase text-center">Mínimo</Text>
+                        <Text className="flex-1 text-xs font-bold text-gray-400 uppercase text-center">Máximo</Text>
                     </View>
-                ))}
-          </View>
+                    
+                    {/* Filas Dinámicas */}
+                    {levels.map((level: any, index: number) => (
+                        <View key={index} className="flex-row p-4 border-b border-gray-50 items-center">
+                            <View className="flex-1 flex-row items-center gap-2">
+                                <View className={`w-2 h-2 rounded-full ${index === 0 ? 'bg-green-500' : index === levels.length - 1 ? 'bg-purple-500' : 'bg-blue-500'}`} />
+                                <Text className="font-bold text-gray-700 text-sm capitalize">{level.label}</Text>
+                            </View>
+                            <Text className="flex-1 text-center text-gray-500 font-medium">{level.min}</Text>
+                            <Text className="flex-1 text-center text-gray-500 font-medium">{level.max}</Text>
+                        </View>
+                    ))}
+              </View>
+          ) : (
+              <View className="p-4 bg-white rounded-2xl border border-dashed border-gray-300 mb-6">
+                  <Text className="text-center text-gray-400">No hay niveles configurados</Text>
+              </View>
+          )}
 
         </ScrollView>
       </SafeAreaView>
@@ -178,14 +260,13 @@ export default function TestDetail({ navigation, route }: Props) {
         </Pressable>
       </Modal>
 
-      {/* --- MODAL 2: EDITAR (INPUTS SEGUROS) --- */}
+      {/* --- MODAL 2: EDITAR --- */}
       <Modal visible={showEditModal} transparent animationType="fade" onRequestClose={() => setShowEditModal(false)}>
         <View className="flex-1 bg-black/50 justify-center px-6">
             <View className="bg-white rounded-[32px] p-6 shadow-xl">
                 <Text className="text-lg font-bold text-gray-900 mb-6 text-center">Editar Prueba</Text>
                 
                 <Text className="text-xs font-bold text-gray-400 uppercase mb-2 ml-1">Nombre</Text>
-                {/* 🛡️ FIX: style nativo */}
                 <TextInput 
                     value={testName}
                     onChangeText={setTestName}
@@ -195,7 +276,6 @@ export default function TestDetail({ navigation, route }: Props) {
                 />
 
                 <Text className="text-xs font-bold text-gray-400 uppercase mb-2 ml-1 mt-4">Instrucciones</Text>
-                {/* 🛡️ FIX: style nativo */}
                 <TextInput 
                     value={description}
                     onChangeText={setDescription}
@@ -210,7 +290,7 @@ export default function TestDetail({ navigation, route }: Props) {
                         <Text className="font-bold text-gray-600">Cancelar</Text>
                     </Pressable>
                     <Pressable onPress={handleUpdateTest} className="flex-1 h-12 justify-center items-center rounded-xl bg-blue-600 active:bg-blue-700">
-                        <Text className="font-bold text-white">Guardar</Text>
+                        {loading ? <ActivityIndicator color="white"/> : <Text className="font-bold text-white">Guardar</Text>}
                     </Pressable>
                 </View>
             </View>
@@ -221,7 +301,6 @@ export default function TestDetail({ navigation, route }: Props) {
   );
 }
 
-// ESTILOS SEGUROS CONTRA CRASH (NATIVEWIND BUG)
 const styles = StyleSheet.create({
   safeInput: {
     backgroundColor: '#F9FAFB',

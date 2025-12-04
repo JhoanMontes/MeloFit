@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { 
   View, 
   Text, 
@@ -8,38 +8,42 @@ import {
   Modal,
   TextInput,
   StyleSheet,
-  Alert
+  Alert,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { EntrenadorStackParamList } from "../../navigation/types";
 import CustomAlert, { AlertType } from "../../components/CustomAlert"; 
+
+// IMPORTAR SUPABASE
+import { supabase } from "../../lib/supabase";
+import { useFocusEffect } from "@react-navigation/native";
+
 const CustomAlertAny = CustomAlert as any;
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "GroupDetail">;
 
-// --- DATOS MOCK ---
-const mockDatabaseAthletes = [
-  { document: '1001', name: 'Carlos "La Roca" Perez', level: 'Avanzado' },
-  { document: '1002', name: 'Ana Maria Polo', level: 'Principiante' },
-  { document: '12345678', name: 'Jhoan Montes', level: 'Elite' },
-];
-
-const initialGroupMembers = [
-  { id: 1, name: 'Alex Johnson', level: 'Avanzado', status: 'Activo' },
-  { id: 2, name: 'Maria García', level: 'Intermedio', status: 'Activo' },
-  { id: 4, name: 'Sarah Miller', level: 'Avanzado', status: 'Pendiente' },
-  { id: 5, name: 'John Smith', level: 'Intermedio', status: 'Activo' },
-  { id: 6, name: 'Emma Wilson', level: 'Avanzado', status: 'Activo' },
-];
+// Interfaz para el atleta encontrado en la BD
+interface AthleteUser {
+  no_documento: number; 
+  nombre_completo: string; 
+  rol: string; 
+}
 
 export default function GroupDetail({ navigation, route }: Props) {
   const { group } = route.params || {};
   
-  // Estados
-  const [groupName, setGroupName] = useState(group?.name || 'Fuerza Avanzada');
-  const [members, setMembers] = useState(initialGroupMembers);
+  // Estados de carga
+  const [loadingAction, setLoadingAction] = useState(false);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+
+  // Estados del Grupo
+  const [groupName, setGroupName] = useState(group?.nombre || 'Sin Nombre'); 
+  
+  // Lista de miembros REALES
+  const [members, setMembers] = useState<any[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
 
   // Modales
@@ -47,12 +51,13 @@ export default function GroupDetail({ navigation, route }: Props) {
   const [showEditNameModal, setShowEditNameModal] = useState(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
 
-  // Búsqueda
+  // Búsqueda de Atleta
   const [searchDoc, setSearchDoc] = useState('');
-  const [foundAthlete, setFoundAthlete] = useState<{document: string, name: string, level: string} | null>(null);
+  const [foundAthlete, setFoundAthlete] = useState<AthleteUser | null>(null);
   const [searchError, setSearchError] = useState('');
+  const [searching, setSearching] = useState(false);
 
-  // Alerta
+  // Alerta Personalizada
   const [alertConfig, setAlertConfig] = useState({
     visible: false,
     title: "",
@@ -65,20 +70,199 @@ export default function GroupDetail({ navigation, route }: Props) {
     setAlertConfig({ visible: true, title, message, type, onConfirm });
   };
 
-  // --- LÓGICA DE GRUPO ---
+  // --- 1. LISTAR ATLETAS DEL GRUPO (JOIN) ---
+  const fetchGroupMembers = useCallback(async () => {
+    if (!group?.codigo) return;
+    
+    try {
+      setLoadingMembers(true);
+      
+      // JOIN: atleta_has_grupo -> atleta -> usuario
+      const { data, error } = await supabase
+        .from('atleta_has_grupo')
+        .select(`
+          atleta_no_documento,
+          atleta:atleta_no_documento (
+             usuario!atleta_no_documento_fkey ( 
+               nombre_completo,
+               rol
+             )
+          )
+        `)
+        .eq('grupo_codigo', group.codigo);
+
+      if (error) throw error;
+
+      const formattedMembers = data.map((item: any) => ({
+        id: item.atleta_no_documento,
+        // Accedemos anidadamente: item -> atleta -> usuario -> nombre
+        name: item.atleta?.usuario?.nombre_completo || 'Usuario Desconocido',
+        level: 'Atleta', 
+        status: 'Activo'
+      }));
+
+      setMembers(formattedMembers);
+    } catch (error: any) {
+      console.error("Error cargando miembros:", error.message);
+    } finally {
+      setLoadingMembers(false);
+    }
+  }, [group?.codigo]);
+
+  // Recargar miembros al entrar a la pantalla
+  useFocusEffect(
+    useCallback(() => {
+        fetchGroupMembers();
+    }, [fetchGroupMembers])
+  );
+
+
+  // --- 2. BUSCAR ATLETA (En tabla USUARIO) ---
+  const handleSearchAthlete = async () => {
+    setSearchError('');
+    setFoundAthlete(null);
+    if (!searchDoc.trim()) return;
+
+    try {
+        setSearching(true);
+        // Buscamos en la tabla 'usuario'
+        const { data, error } = await supabase
+            .from('usuario')
+            .select('nombre_completo, no_documento, rol')
+            .eq('no_documento', parseInt(searchDoc))
+            // Opcional: Validar que el rol sea 'atleta' para evitar agregar entrenadores
+            // .eq('rol', 'atleta') 
+            .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+            // Validamos duplicado localmente
+            const exists = members.find(m => m.id === data.no_documento);
+            if (exists) {
+                setSearchError('Este atleta ya pertenece al grupo.');
+            } else {
+                setFoundAthlete(data);
+            }
+        } else {
+            setSearchError('No se encontró información de dicho documento.');
+        }
+    } catch (e: any) {
+        setSearchError('Error al buscar usuario.');
+        console.error(e);
+    } finally {
+        setSearching(false);
+    }
+  };
+
+
+  // --- 3. AGREGAR ATLETA AL GRUPO (SIMPLIFICADO) ---
+  const handleAddFoundAthlete = async () => {
+    if (!foundAthlete || !group?.codigo) return;
+
+    try {
+        setLoadingAction(true);
+
+        // Gracias a tu TRIGGER, solo insertamos en la relación
+        const { error: linkError } = await supabase
+            .from('atleta_has_grupo')
+            .insert({
+                grupo_codigo: group.codigo,
+                atleta_no_documento: foundAthlete.no_documento
+            });
+
+        if (linkError) {
+            // Manejo de error específico de llave duplicada (Postgres code 23505)
+            if (linkError.code === '23505') throw new Error("El atleta ya está en este grupo.");
+            throw linkError;
+        }
+
+        // Éxito
+        showAlert("Añadido", `${foundAthlete.nombre_completo} ha sido agregado al grupo.`, "success");
+        setShowAddMemberModal(false);
+        setSearchDoc('');
+        setFoundAthlete(null);
+        
+        // Recargamos la lista
+        fetchGroupMembers();
+
+    } catch (error: any) {
+        Alert.alert("Error", error.message);
+    } finally {
+        setLoadingAction(false);
+    }
+  };
+
+
+  // --- 4. ELIMINAR MIEMBROS SELECCIONADOS ---
   const handleRemoveSelected = () => {
     if (selectedMembers.length === 0) return;
+    
     showAlert(
         "¿Eliminar Atletas?", 
-        `Estás a punto de sacar a ${selectedMembers.length} atletas.`, 
+        `Se eliminarán ${selectedMembers.length} atletas de este grupo.`, 
         "error",
-        () => {
-            const remainingMembers = members.filter(m => !selectedMembers.includes(m.id));
-            setMembers(remainingMembers);
-            setSelectedMembers([]);
-            showAlert("Eliminados", "Los atletas han sido removidos.", "success");
+        async () => {
+            try {
+                setLoadingAction(true);
+                
+                const { error } = await supabase
+                    .from('atleta_has_grupo')
+                    .delete()
+                    .eq('grupo_codigo', group.codigo)
+                    .in('atleta_no_documento', selectedMembers);
+
+                if (error) throw error;
+
+                showAlert("Eliminados", "Atletas removidos correctamente.", "success");
+                setSelectedMembers([]);
+                fetchGroupMembers();
+
+            } catch (error: any) {
+                Alert.alert("Error", "No se pudieron eliminar: " + error.message);
+            } finally {
+                setLoadingAction(false);
+            }
         }
     );
+  };
+
+
+  // --- OTRAS FUNCIONES ---
+  const handleDeleteGroup = async () => {
+    setShowOptionsModal(false);
+    showAlert(
+        "¿Eliminar Grupo?", 
+        "Esta acción es permanente.", 
+        "error", 
+        async () => {
+            try {
+                setLoadingAction(true);
+                const { error } = await supabase.from('grupo').delete().eq('codigo', group.codigo);
+                if (error) throw error;
+                navigation.goBack(); 
+            } catch (error: any) {
+                Alert.alert("Error", error.message);
+            } finally {
+                setLoadingAction(false);
+            }
+        }
+    );
+  };
+
+  const handleUpdateGroupName = async () => {
+    if (!groupName.trim()) return;
+    try {
+        setLoadingAction(true);
+        const { error } = await supabase.from('grupo').update({ nombre: groupName }).eq('codigo', group.codigo);
+        if (error) throw error;
+        setShowEditNameModal(false);
+        showAlert("Éxito", "Nombre actualizado.", "success");
+    } catch (error: any) {
+        Alert.alert("Error", error.message);
+    } finally {
+        setLoadingAction(false);
+    }
   };
 
   const toggleMember = (memberId: number) => {
@@ -89,51 +273,11 @@ export default function GroupDetail({ navigation, route }: Props) {
     }
   };
 
-  const handleDeleteGroup = () => {
-    setShowOptionsModal(false);
-    showAlert("¿Eliminar Grupo?", "Esta acción es permanente.", "error", () => navigation.goBack());
-  };
-
-  const handleUpdateGroupName = () => {
-    if (groupName.trim() === "") return;
-    setShowEditNameModal(false);
-    showAlert("Éxito", "Nombre actualizado.", "success");
-  };
-
-  const handleSearchAthlete = () => {
-    setSearchError('');
-    setFoundAthlete(null);
-    if (!searchDoc) return;
-    const athlete = mockDatabaseAthletes.find(a => a.document === searchDoc);
-    if (athlete) {
-        const exists = members.find(m => m.name === athlete.name);
-        exists ? setSearchError('Ya está en el grupo.') : setFoundAthlete(athlete);
-    } else {
-        setSearchError('No encontrado.');
-    }
-  };
-
-  const handleAddFoundAthlete = () => {
-    if (foundAthlete) {
-        const newMember = { id: Math.random(), name: foundAthlete.name, level: foundAthlete.level, status: 'Activo' };
-        setMembers([...members, newMember]);
-        setShowAddMemberModal(false);
-        setSearchDoc('');
-        setFoundAthlete(null);
-        showAlert("Añadido", `${foundAthlete.name} agregado.`, "success");
-    }
-  };
-
   const handleAssignTest = () => {
-    if (selectedMembers.length === 0) {
-        // Si no hay nadie seleccionado, asumimos "Asignar a todos"
-        navigation.navigate('AssignTestStep1');
-    } else {
-        // Lógica para asignar solo a seleccionados
-        navigation.navigate('AssignTestStep1');
-    }
+    navigation.navigate('AssignTestStep1');
   };
 
+  // --- RENDER ---
   return (
     <View className="flex-1 bg-[#F5F5F7]">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
@@ -146,10 +290,15 @@ export default function GroupDetail({ navigation, route }: Props) {
         onConfirm={alertConfig.onConfirm}
       />
       
+      {loadingAction && (
+        <View className="absolute inset-0 bg-black/20 z-50 items-center justify-center">
+            <ActivityIndicator size="large" color="#2563EB" />
+        </View>
+      )}
 
        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         
-        {/* --- HEADER (IGUAL A MANAGE TESTS) --- */}
+        {/* HEADER */}
         <View className="px-6 pt-4 pb-2">
           <View className="flex-row items-center justify-between mb-4">
             <Pressable 
@@ -171,19 +320,18 @@ export default function GroupDetail({ navigation, route }: Props) {
           <View className="flex-row items-center gap-2 mb-2">
              <Text className="text-gray-500 text-base font-medium">Detalle del equipo</Text>
              <View className="bg-blue-100 px-2 py-0.5 rounded-md">
-                <Text className="text-blue-700 text-xs font-bold tracking-widest">{group?.code || 'COD-000'}</Text>
+                <Text className="text-blue-700 text-xs font-bold tracking-widest">
+                    {group?.codigo || 'COD-000'}
+                </Text>
              </View>
           </View>
         </View>
 
         <ScrollView className="flex-1 px-6 pt-2" contentContainerStyle={{ paddingBottom: 100 }}>
-          
-          {/* DESCRIPCIÓN RÁPIDA */}
           <Text className="text-gray-400 text-sm mb-6 leading-relaxed">
-            {group?.description || 'Sin descripción disponible para este grupo.'}
+            {group?.descripcion || 'Sin descripción disponible.'}
           </Text>
 
-          {/* BOTONES DE ACCIÓN (ESTILO MANAGE TESTS) */}
           <View className="flex-row gap-3 mb-8">
              <Pressable 
                 onPress={handleAssignTest}
@@ -202,7 +350,6 @@ export default function GroupDetail({ navigation, route }: Props) {
              </Pressable>
           </View>
 
-          {/* BARRA DE ELIMINACIÓN (CONTEXTUAL) */}
           {selectedMembers.length > 0 && (
             <View className="mb-6">
               <View className="bg-red-50 border border-red-100 rounded-2xl p-4 flex-row justify-between items-center shadow-sm">
@@ -225,101 +372,76 @@ export default function GroupDetail({ navigation, route }: Props) {
             </View>
           )}
 
-          {/* LISTA DE MIEMBROS */}
           <View className="flex-row justify-between items-center mb-4">
             <Text className="text-gray-900 font-bold text-xl">Atletas ({members.length})</Text>
-            {selectedMembers.length === 0 && (
+            {members.length > 0 && selectedMembers.length === 0 && (
                 <Text className="text-gray-400 text-xs font-medium">Mantén pulsado para editar</Text>
             )}
           </View>
 
-          <View className="space-y-3">
-            {members.map((member) => {
-              const isSelected = selectedMembers.includes(member.id);
-              return (
-                <Pressable
-                  key={member.id}
-                  onPress={() => toggleMember(member.id)}
-                  // TARJETA IDÉNTICA A MANAGE TESTS
-                  className={`p-4 rounded-2xl flex-row items-center justify-between shadow-sm border ${
-                    isSelected ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'
-                  }`}
-                >
-                  <View className="flex-row items-center flex-1 mr-4">
-                    <View className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${
-                        isSelected ? 'bg-red-100' : 'bg-gray-50'
-                    }`}>
-                      <Ionicons 
-                        name={isSelected ? "trash-outline" : "person-outline"} 
-                        size={20} 
-                        color={isSelected ? '#DC2626' : '#6B7280'} 
-                      />
+          {loadingMembers ? (
+              <ActivityIndicator color="#2563EB" size="small" />
+          ) : members.length === 0 ? (
+             <View className="bg-white p-6 rounded-2xl items-center justify-center border border-dashed border-gray-300">
+                <Ionicons name="people-outline" size={40} color="#D1D5DB" />
+                <Text className="text-gray-400 text-center mt-2">
+                    Aún no has agregado atletas.
+                </Text>
+             </View>
+          ) : (
+            <View className="space-y-3">
+                {members.map((member) => {
+                const isSelected = selectedMembers.includes(member.id);
+                return (
+                    <Pressable
+                    key={member.id}
+                    onPress={() => toggleMember(member.id)}
+                    className={`p-4 rounded-2xl flex-row items-center justify-between shadow-sm border ${
+                        isSelected ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'
+                    }`}
+                    >
+                    <View className="flex-row items-center flex-1 mr-4">
+                        <View className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${
+                            isSelected ? 'bg-red-100' : 'bg-gray-50'
+                        }`}>
+                        <Ionicons 
+                            name={isSelected ? "trash-outline" : "person-outline"} 
+                            size={20} 
+                            color={isSelected ? '#DC2626' : '#6B7280'} 
+                        />
+                        </View>
+                        <View className="flex-1">
+                        <Text className={`font-bold text-base ${isSelected ? 'text-red-900' : 'text-gray-900'}`}>
+                            {member.name}
+                        </Text>
+                        <View className="flex-row items-center mt-0.5">
+                            <Ionicons name="card-outline" size={12} color="#9CA3AF" />
+                            <Text className="text-gray-400 text-xs ml-1">Doc: {member.id}</Text>
+                        </View>
+                        </View>
                     </View>
-                    <View className="flex-1">
-                      <Text className={`font-bold text-base ${isSelected ? 'text-red-900' : 'text-gray-900'}`}>
-                        {member.name}
-                      </Text>
-                      <View className="flex-row items-center mt-0.5">
-                        <Ionicons name="fitness-outline" size={12} color="#9CA3AF" />
-                        <Text className="text-gray-400 text-xs ml-1">{member.level}</Text>
-                      </View>
-                    </View>
-                  </View>
-                  
-                  {isSelected ? (
-                     <Ionicons name="close-circle" size={24} color="#DC2626" />
-                  ) : (
-                     <Ionicons name="chevron-forward" size={20} color="#E5E7EB" />
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-
+                    {isSelected ? (
+                        <Ionicons name="close-circle" size={24} color="#DC2626" />
+                    ) : (
+                        <Ionicons name="chevron-forward" size={20} color="#E5E7EB" />
+                    )}
+                    </Pressable>
+                );
+                })}
+            </View>
+          )}
         </ScrollView>
       </SafeAreaView>
 
-      {/* --- MODALES --- */}
-      {/* IMPORTANTE: Los Inputs aquí usan styles.safeInput para evitar el crash */}
-      
-      {/* 1. OPCIONES */}
-      <Modal visible={showOptionsModal} transparent animationType="fade" onRequestClose={() => setShowOptionsModal(false)}>
-        <Pressable className="flex-1 bg-black/40 justify-end" onPress={() => setShowOptionsModal(false)}>
-            <View className="bg-white rounded-t-3xl p-6 pb-10">
-                <View className="w-12 h-1.5 bg-slate-200 rounded-full self-center mb-6" />
-                <Text className="text-xl font-bold text-slate-900 mb-6 text-center">Opciones del Grupo</Text>
-                
-                <Pressable 
-                    onPress={() => { setShowOptionsModal(false); setShowEditNameModal(true); }}
-                    className="flex-row items-center p-4 bg-slate-50 rounded-2xl mb-3 border border-slate-100 active:bg-slate-100"
-                >
-                    <Ionicons name="pencil" size={22} color="#475569" style={{marginRight: 12}} />
-                    <Text className="text-base font-bold text-slate-700">Editar Nombre</Text>
-                </Pressable>
-
-                <Pressable 
-                    onPress={handleDeleteGroup}
-                    className="flex-row items-center p-4 bg-red-50 rounded-2xl border border-red-100 active:bg-red-100"
-                >
-                    <Ionicons name="trash" size={22} color="#DC2626" style={{marginRight: 12}} />
-                    <Text className="text-base font-bold text-red-600">Eliminar Grupo</Text>
-                </Pressable>
-            </View>
-        </Pressable>
-      </Modal>
-
-      {/* 2. EDITAR NOMBRE */}
+      {/* MODALES IGUALES AL CÓDIGO ANTERIOR... */}
       <Modal visible={showEditNameModal} transparent animationType="fade" onRequestClose={() => setShowEditNameModal(false)}>
         <View className="flex-1 bg-black/50 justify-center px-6">
             <View className="bg-white rounded-3xl p-6 shadow-xl">
                 <Text className="text-lg font-bold text-slate-900 mb-4 text-center">Editar Nombre</Text>
-                {/* FIX CRASH: style nativo */}
                 <TextInput 
                     value={groupName}
                     onChangeText={setGroupName}
                     style={styles.safeInput}
-                    placeholder="Nombre del grupo"
-                    placeholderTextColor="#9CA3AF"
                 />
                 <View className="flex-row gap-3 mt-6">
                     <Pressable onPress={() => setShowEditNameModal(false)} className="flex-1 h-12 justify-center items-center rounded-xl border border-slate-200">
@@ -333,7 +455,25 @@ export default function GroupDetail({ navigation, route }: Props) {
         </View>
       </Modal>
 
-      {/* 3. AÑADIR ATLETA */}
+      {/* MODAL OPCIONES */}
+      <Modal visible={showOptionsModal} transparent animationType="fade" onRequestClose={() => setShowOptionsModal(false)}>
+        <Pressable className="flex-1 bg-black/40 justify-end" onPress={() => setShowOptionsModal(false)}>
+            <View className="bg-white rounded-t-3xl p-6 pb-10">
+                <View className="w-12 h-1.5 bg-slate-200 rounded-full self-center mb-6" />
+                <Text className="text-xl font-bold text-slate-900 mb-6 text-center">Opciones del Grupo</Text>
+                <Pressable onPress={() => { setShowOptionsModal(false); setShowEditNameModal(true); }} className="flex-row items-center p-4 bg-slate-50 rounded-2xl mb-3 border border-slate-100">
+                    <Ionicons name="pencil" size={22} color="#475569" style={{marginRight: 12}} />
+                    <Text className="text-base font-bold text-slate-700">Editar Nombre</Text>
+                </Pressable>
+                <Pressable onPress={handleDeleteGroup} className="flex-row items-center p-4 bg-red-50 rounded-2xl border border-red-100">
+                    <Ionicons name="trash" size={22} color="#DC2626" style={{marginRight: 12}} />
+                    <Text className="text-base font-bold text-red-600">Eliminar Grupo</Text>
+                </Pressable>
+            </View>
+        </Pressable>
+      </Modal>
+
+      {/* MODAL AÑADIR ATLETA */}
       <Modal visible={showAddMemberModal} transparent animationType="slide" onRequestClose={() => setShowAddMemberModal(false)}>
         <View className="flex-1 bg-white mt-20 rounded-t-3xl shadow-2xl border-t border-slate-100">
             <View className="p-6">
@@ -345,7 +485,6 @@ export default function GroupDetail({ navigation, route }: Props) {
                 </View>
                 <Text className="text-slate-500 mb-2 font-medium ml-1">Buscar por Documento</Text>
                 <View className="flex-row gap-3 mb-6">
-                    {/* FIX CRASH: style nativo */}
                     <TextInput 
                         value={searchDoc}
                         onChangeText={setSearchDoc}
@@ -354,8 +493,11 @@ export default function GroupDetail({ navigation, route }: Props) {
                         placeholderTextColor="#9CA3AF"
                         style={[styles.safeInput, { flex: 1, marginBottom: 0 }]}
                     />
-                    <Pressable onPress={handleSearchAthlete} className="bg-blue-600 w-14 rounded-xl items-center justify-center">
-                        <Ionicons name="search" size={24} color="white" />
+                    <Pressable 
+                        onPress={handleSearchAthlete} 
+                        className="bg-blue-600 w-14 rounded-xl items-center justify-center active:bg-blue-700"
+                    >
+                        {searching ? <ActivityIndicator color="white" /> : <Ionicons name="search" size={24} color="white" />}
                     </Pressable>
                 </View>
 
@@ -373,8 +515,8 @@ export default function GroupDetail({ navigation, route }: Props) {
                                 <Ionicons name="person" size={24} color="#2563EB" />
                             </View>
                             <View>
-                                <Text className="text-lg font-bold text-slate-900">{foundAthlete.name}</Text>
-                                <Text className="text-slate-500 font-medium">Nivel: {foundAthlete.level}</Text>
+                                <Text className="text-lg font-bold text-slate-900">{foundAthlete.nombre_completo}</Text>
+                                <Text className="text-slate-500 font-medium">Doc: {foundAthlete.no_documento}</Text>
                             </View>
                         </View>
                         <Pressable 
@@ -394,7 +536,6 @@ export default function GroupDetail({ navigation, route }: Props) {
   );
 }
 
-// ESTILOS SEGUROS
 const styles = StyleSheet.create({
   safeInput: {
     backgroundColor: '#F9FAFB',
