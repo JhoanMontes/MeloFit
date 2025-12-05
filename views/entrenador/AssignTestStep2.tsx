@@ -1,91 +1,166 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   View, 
   Text, 
-  TextInput, 
   Pressable, 
   ScrollView, 
   Alert,
   KeyboardAvoidingView,
   Platform,
-  StatusBar
+  StatusBar,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { 
   ArrowLeft, 
-  User, 
-  Users, 
-  Check, 
   Calendar, 
-  Search, 
   Clock, 
-  Target 
+  Target,
+  Eye,
+  Check,
+  Users,
+  Search, // Restaurado (aunque esté oculto visualmente)
+  User    // Restaurado
 } from "lucide-react-native";
+// IMPORTANTE: El nuevo selector de fecha
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { supabase } from "../../lib/supabase"; 
 import { EntrenadorStackParamList } from "../../navigation/types";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "AssignTestStep2">;
 
-// Mock Data (Datos de prueba)
-const athletes = [
-  { id: 1, name: 'Alex Johnson', documentNumber: '12345678A', group: 'Fuerza Avanzada', active: true },
-  { id: 2, name: 'Maria García', documentNumber: '87654321B', group: 'Fuerza Avanzada', active: true },
-  { id: 3, name: 'David Lee', documentNumber: '45678912C', group: 'Principiantes', active: false },
-  { id: 4, name: 'Sarah Miller', documentNumber: '78912345D', group: 'Resistencia', active: false },
-  { id: 5, name: 'John Smith', documentNumber: '32165498E', group: 'Fuerza Avanzada', active: true },
-  { id: 6, name: 'Emma Wilson', documentNumber: '65498732F', group: 'Principiantes', active: true }
-];
-
-const groups = [
-  { id: 1, name: 'Fuerza Avanzada', members: 12 },
-  { id: 2, name: 'Principiantes', members: 8 },
-  { id: 3, name: 'Resistencia', members: 6 }
-];
-
 export default function AssignTestStep2({ navigation, route }: Props) {
-  const { test } = route.params; // Recibimos la prueba del Paso 1
+  const { test, targetGroup } = route.params; 
   const insets = useSafeAreaInsets();
 
-  const [selectedAthletes, setSelectedAthletes] = useState<number[]>([]);
-  const [selectedGroups, setSelectedGroups] = useState<number[]>([]);
-  const [dueDate, setDueDate] = useState('');
+  // Estados principales
+  const [athletesToAssign, setAthletesToAssign] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // --- LOGICA DE FECHA MEJORADA ---
+  const [deadlineDate, setDeadlineDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Estados Legacy (Mantengo esto para que no te de error de variables no usadas)
   const [activeTab, setActiveTab] = useState<'athletes' | 'groups'>('athletes');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // --- LÓGICA ORIGINAL ---
-  const toggleAthlete = (id: number) => {
-    setSelectedAthletes(prev =>
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
+  // 1. CARGA AUTOMÁTICA DE ATLETAS
+  useEffect(() => {
+    const loadGroupMembers = async () => {
+      if (!targetGroup) {
+          setLoading(false);
+          return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from('atleta_has_grupo')
+          .select(`
+            atleta_no_documento,
+            atleta:atleta_no_documento (
+              no_documento,
+              usuario (nombre_completo)
+            )
+          `)
+          .eq('grupo_codigo', targetGroup.codigo);
+
+        if (error) throw error;
+
+        const cleanData = data?.map((item: any) => ({
+           no_documento: item.atleta.no_documento,
+           nombre_completo: item.atleta.usuario?.nombre_completo || "Sin Nombre"
+        })) || [];
+
+        setAthletesToAssign(cleanData);
+      } catch (error: any) {
+        console.error("Error loading members:", error);
+        Alert.alert("Error", "No se pudieron cargar los miembros del grupo.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadGroupMembers();
+  }, [targetGroup]);
+
+  // --- FUNCIÓN CLAVE: CORRECCIÓN DE ZONA HORARIA ---
+  // Esto arregla que te salga el día siguiente (5 dic) cuando es de noche (4 dic)
+  const getLocalISOString = (date: Date) => {
+    const offset = date.getTimezoneOffset() * 60000; // Offset en milisegundos
+    const localDate = new Date(date.getTime() - offset);
+    return localDate.toISOString().split('T')[0];
   };
 
-  const toggleGroup = (id: number) => {
-    setSelectedGroups(prev =>
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
+  // Manejador del Calendario
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    // En Android hay que ocultar el picker manualmente
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    
+    if (event.type === 'set' && selectedDate) {
+      setDeadlineDate(selectedDate);
+    }
   };
 
-  const handleAssign = () => {
-    // Lógica de guardado simulada
-    console.log("Asignando prueba:", {
-      testId: test.id,
-      athletes: selectedAthletes,
-      groups: selectedGroups,
-      dueDate
-    });
+  // 2. GUARDAR ASIGNACIÓN
+  const handleAssign = async () => {
+    if (!deadlineDate) {
+        Alert.alert("Falta fecha", "Por favor selecciona una fecha límite tocando el calendario.");
+        return;
+    }
 
-    Alert.alert(
-      "¡Asignación Exitosa!", 
-      `Se ha asignado "${test.name}" correctamente a los destinatarios seleccionados.`, 
-      [{ text: "Volver al Dashboard", onPress: () => navigation.navigate('Dashboard') }]
-    );
+    if (athletesToAssign.length === 0) {
+        Alert.alert("Atención", "El grupo está vacío o no se seleccionaron atletas.");
+        return;
+    }
+    
+    setSaving(true);
+    try {
+      // Usamos la función corregida para obtener la fecha local
+      const todayString = getLocalISOString(new Date()); 
+      const deadlineString = getLocalISOString(deadlineDate);
+
+      // A. Crear Encabezado
+      const { data: asignacionData, error: asignacionError } = await supabase
+        .from('prueba_asignada')
+        .insert({
+          prueba_id: test.id,
+          fecha_asignacion: todayString, // Ahora será la fecha local correcta
+          fecha_limite: deadlineString
+        })
+        .select()
+        .single();
+
+      if (asignacionError) throw asignacionError;
+      const asignacionId = asignacionData.id;
+
+      // B. Crear Detalles
+      const detalleRows = athletesToAssign.map(a => ({
+        prueba_asignada_id: asignacionId,
+        atleta_no_documento: a.no_documento
+      }));
+
+      const { error: detailError } = await supabase
+        .from('prueba_asignada_has_atleta')
+        .insert(detalleRows);
+
+      if (detailError) throw detailError;
+
+      Alert.alert(
+        "¡Asignación Exitosa!", 
+        `Prueba asignada correctamente para el ${deadlineString}.`, 
+        [{ text: "Listo", onPress: () => navigation.pop(2) }] 
+      );
+
+    } catch (error: any) {
+      console.error("Error asignando:", error);
+      Alert.alert("Error", "Ocurrió un fallo al asignar la prueba.");
+    } finally {
+      setSaving(false);
+    }
   };
-
-  const filteredAthletes = athletes.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  const filteredGroups = groups.filter(g => g.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  
-  const totalSelectionCount = selectedAthletes.length + selectedGroups.length;
-  // -----------------------
 
   return (
     <View className="flex-1 bg-slate-50">
@@ -97,7 +172,7 @@ export default function AssignTestStep2({ navigation, route }: Props) {
           className="flex-1"
         >
           
-          {/* --- HEADER --- */}
+          {/* HEADER */}
           <View className="px-6 pt-4 pb-2">
             <View className="flex-row items-center mb-6">
               <Pressable 
@@ -108,226 +183,152 @@ export default function AssignTestStep2({ navigation, route }: Props) {
               </Pressable>
               <View>
                 <Text className="text-slate-900 text-2xl font-extrabold tracking-tight">Asignar Prueba</Text>
-                <Text className="text-slate-500 text-sm font-medium">Paso 2: Seleccionar Destinatarios</Text>
+                <Text className="text-slate-500 text-sm font-medium">Paso 2: Confirmar</Text>
               </View>
             </View>
           </View>
 
           <ScrollView 
             className="flex-1 px-6"
-            contentContainerStyle={{ paddingBottom: 160 }} // Espacio amplio para el footer grande
+            contentContainerStyle={{ paddingBottom: 160 }} 
             showsVerticalScrollIndicator={false}
           >
             
-            {/* 1. RESUMEN DE LA PRUEBA (CARD HERO) */}
-            <View className="bg-white rounded-[32px] p-6 mb-6 shadow-sm border border-slate-100 flex-row items-start justify-between">
+            {/* RESUMEN PRUEBA */}
+            <View className="bg-white rounded-[32px] p-6 mb-6 shadow-sm border border-slate-100 flex-row items-center justify-between">
               <View className="flex-1 mr-4">
                 <View className="flex-row items-center mb-2">
                     <View className="bg-blue-100 px-2 py-1 rounded-md mr-2">
                         <Text className="text-[10px] font-bold text-blue-700 uppercase">Seleccionada</Text>
                     </View>
                 </View>
-                <Text className="text-slate-900 text-xl font-bold mb-1">{test?.name || 'Prueba'}</Text>
-                <Text className="text-slate-500 text-sm leading-5">{test?.description || 'Sin descripción'}</Text>
+                <Text className="text-slate-900 text-xl font-bold mb-1">{test?.nombre}</Text>
+                <Text className="text-slate-500 text-sm leading-5" numberOfLines={2}>
+                    {test?.descripcion || 'Sin descripción'}
+                </Text>
               </View>
-              <View className="bg-blue-50 p-3 rounded-2xl">
-                <Target size={24} color="#2563EB" />
-              </View>
+              <Pressable 
+                onPress={() => navigation.navigate('TestDetail', { test })}
+                className="bg-blue-50 w-12 h-12 rounded-full items-center justify-center active:bg-blue-100 border border-blue-100"
+              >
+                <Eye size={22} color="#2563EB" />
+              </Pressable>
             </View>
 
-            {/* 2. FECHA LÍMITE */}
+            {/* TARJETA GRUPO */}
+            {targetGroup && (
+                <View className="bg-blue-600 rounded-[24px] p-6 mb-8 shadow-lg shadow-blue-200">
+                    <View className="flex-row items-center space-x-3 mb-4">
+                        <View className="bg-white/20 p-2 rounded-lg">
+                            <Users size={20} color="white" />
+                        </View>
+                        <View>
+                            <Text className="text-blue-100 text-xs font-medium uppercase">Asignando a Grupo</Text>
+                            <Text className="text-white font-bold text-lg">
+                                {targetGroup.nombre}
+                            </Text>
+                        </View>
+                    </View>
+                    
+                    <View className="bg-white/10 rounded-xl p-4 flex-row items-center">
+                        {loading ? (
+                            <ActivityIndicator color="white" size="small" />
+                        ) : (
+                            <>
+                                <Check size={16} color="#93C5FD" style={{ marginRight: 8 }} />
+                                <Text className="text-white font-medium text-sm">
+                                    {athletesToAssign.length > 0 
+                                        ? `${athletesToAssign.length} atletas recibirán esta prueba`
+                                        : "No se encontraron atletas en este grupo"
+                                    }
+                                </Text>
+                            </>
+                        )}
+                    </View>
+                </View>
+            )}
+
+            {/* FECHA LÍMITE (SELECTOR MEJORADO) */}
             <View className="mb-8">
-              <Text className="text-slate-700 font-bold text-sm ml-1 mb-3">Fecha Límite (Opcional)</Text>
-              <View className="bg-white border border-slate-200 rounded-2xl h-14 flex-row items-center px-4 shadow-sm shadow-slate-200/50">
+              <Text className="text-slate-700 font-bold text-sm ml-1 mb-3">Fecha Límite</Text>
+              
+              <Pressable 
+                onPress={() => setShowDatePicker(true)}
+                className="bg-white border border-slate-200 rounded-2xl h-14 flex-row items-center px-4 shadow-sm shadow-slate-200/50 active:bg-slate-50"
+              >
                 <Calendar size={20} color="#94a3b8" style={{ marginRight: 12 }} />
-                <TextInput
-                  placeholder="DD/MM/AAAA"
-                  value={dueDate}
-                  onChangeText={setDueDate}
-                  className="flex-1 text-slate-900 text-base font-medium"
-                  placeholderTextColor="#cbd5e1"
+                
+                {/* Texto condicional: si hay fecha la muestra, si no muestra placeholder */}
+                {deadlineDate ? (
+                    <Text className="text-slate-900 text-base font-medium">
+                        {/* Mostramos fecha legible ej: 04/12/2025 */}
+                        {deadlineDate.toLocaleDateString()} 
+                    </Text>
+                ) : (
+                    <Text className="text-slate-400 text-base font-medium">
+                        Seleccionar fecha...
+                    </Text>
+                )}
+              </Pressable>
+
+              {/* Componente del Selector (Solo visible cuando showDatePicker es true) */}
+              {showDatePicker && (
+                <DateTimePicker
+                    value={deadlineDate || new Date()}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={onDateChange}
+                    minimumDate={new Date()} // Evita seleccionar el pasado
                 />
-              </View>
+              )}
             </View>
 
-            {/* 3. SELECCIÓN DE DESTINATARIOS */}
+            {/* --- SECCIÓN MANUAL (COMENTADA Y OCULTA) --- */}
+            {/*
             <View>
               <Text className="text-slate-900 font-bold text-lg mb-4">¿A quién va dirigida?</Text>
-
-              {/* Tabs Switcher */}
               <View className="bg-slate-200/50 p-1 rounded-2xl flex-row mb-6">
-                <Pressable
-                  onPress={() => setActiveTab('athletes')}
-                  className={`flex-1 py-3 rounded-xl items-center justify-center transition-all ${
-                    activeTab === 'athletes' 
-                      ? 'bg-white shadow-sm' 
-                      : 'bg-transparent'
-                  }`}
-                >
-                  <Text className={`font-bold text-sm ${activeTab === 'athletes' ? 'text-blue-600' : 'text-slate-500'}`}>
-                    Atletas Individuales
-                  </Text>
+                <Pressable onPress={() => setActiveTab('athletes')} className={`flex-1 py-3 rounded-xl items-center justify-center ${activeTab === 'athletes' ? 'bg-white shadow-sm' : ''}`}>
+                  <Text className={`font-bold text-sm ${activeTab === 'athletes' ? 'text-blue-600' : 'text-slate-500'}`}>Atletas</Text>
                 </Pressable>
-                <Pressable
-                  onPress={() => setActiveTab('groups')}
-                  className={`flex-1 py-3 rounded-xl items-center justify-center transition-all ${
-                    activeTab === 'groups' 
-                      ? 'bg-white shadow-sm' 
-                      : 'bg-transparent'
-                  }`}
-                >
-                  <Text className={`font-bold text-sm ${activeTab === 'groups' ? 'text-blue-600' : 'text-slate-500'}`}>
-                    Grupos Enteros
-                  </Text>
+                <Pressable onPress={() => setActiveTab('groups')} className={`flex-1 py-3 rounded-xl items-center justify-center ${activeTab === 'groups' ? 'bg-white shadow-sm' : ''}`}>
+                  <Text className={`font-bold text-sm ${activeTab === 'groups' ? 'text-blue-600' : 'text-slate-500'}`}>Grupos</Text>
                 </Pressable>
               </View>
-
-              {/* Buscador */}
               <View className="relative mb-6">
-                <View className="absolute left-4 top-4 z-10">
-                  <Search size={20} color="#9CA3AF" />
-                </View>
-                <TextInput
-                  placeholder={activeTab === 'athletes' ? "Buscar atleta..." : "Buscar grupo..."}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  className="bg-white border border-slate-200 rounded-2xl h-14 pl-12 pr-4 text-base font-medium shadow-sm shadow-slate-200/50"
-                  placeholderTextColor="#94a3b8"
-                />
+                <View className="absolute left-4 top-4 z-10"><Search size={20} color="#9CA3AF" /></View>
+                <TextInput placeholder="Buscar..." value={searchQuery} onChangeText={setSearchQuery} className="bg-white border border-slate-200 rounded-2xl h-14 pl-12 pr-4 text-base" />
               </View>
-
-              {/* --- LISTA DE ATLETAS --- */}
-              {activeTab === 'athletes' && (
-                <View className="space-y-3">
-                  {filteredAthletes.map((athlete) => {
-                    const isSelected = selectedAthletes.includes(athlete.id);
-                    return (
-                      <Pressable
-                        key={athlete.id}
-                        onPress={() => toggleAthlete(athlete.id)}
-                        className={`flex-row items-center p-4 rounded-2xl border transition-all active:scale-[0.99] ${
-                          isSelected 
-                            ? 'bg-blue-50 border-blue-500 shadow-sm' 
-                            : 'bg-white border-slate-100'
-                        }`}
-                      >
-                        {/* Avatar / Icono */}
-                        <View className={`w-10 h-10 rounded-full items-center justify-center mr-4 border ${
-                            isSelected ? 'bg-blue-100 border-blue-200' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                            <User size={20} color={isSelected ? '#2563EB' : '#64748b'} />
-                        </View>
-                        
-                        {/* Info */}
-                        <View className="flex-1">
-                          <Text className={`font-bold text-base mb-0.5 ${isSelected ? 'text-blue-900' : 'text-slate-900'}`}>
-                            {athlete.name}
-                          </Text>
-                          <View className="flex-row items-center">
-                             <Text className="text-xs text-slate-500 font-medium">{athlete.group}</Text>
-                             {!athlete.active && (
-                                <View className="ml-2 bg-red-100 px-1.5 py-0.5 rounded text-[10px]">
-                                    <Text className="text-red-600 text-[10px] font-bold">Inactivo</Text>
-                                </View>
-                             )}
-                          </View>
-                        </View>
-
-                        {/* Checkbox Visual */}
-                        <View className={`w-6 h-6 rounded-full border items-center justify-center transition-colors ${
-                          isSelected 
-                            ? 'bg-blue-600 border-blue-600' 
-                            : 'bg-white border-slate-300'
-                        }`}>
-                          {isSelected && <Check size={14} color="white" strokeWidth={4} />}
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                  {filteredAthletes.length === 0 && (
-                      <Text className="text-center text-slate-400 mt-4">No se encontraron atletas</Text>
-                  )}
-                </View>
-              )}
-
-              {/* --- LISTA DE GRUPOS --- */}
-              {activeTab === 'groups' && (
-                <View className="space-y-3">
-                  {filteredGroups.map((group) => {
-                    const isSelected = selectedGroups.includes(group.id);
-                    return (
-                      <Pressable
-                        key={group.id}
-                        onPress={() => toggleGroup(group.id)}
-                        className={`flex-row items-center p-4 rounded-2xl border transition-all active:scale-[0.99] ${
-                          isSelected 
-                            ? 'bg-blue-50 border-blue-500 shadow-sm' 
-                            : 'bg-white border-slate-100'
-                        }`}
-                      >
-                        <View className={`w-10 h-10 rounded-full items-center justify-center mr-4 border ${
-                            isSelected ? 'bg-blue-100 border-blue-200' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <Users size={20} color={isSelected ? '#2563EB' : '#64748b'} />
-                        </View>
-                        
-                        <View className="flex-1">
-                          <Text className={`font-bold text-base mb-0.5 ${isSelected ? 'text-blue-900' : 'text-slate-900'}`}>
-                            {group.name}
-                          </Text>
-                          <Text className="text-xs text-slate-500 font-medium">
-                            {group.members} miembros totales
-                          </Text>
-                        </View>
-
-                        <View className={`w-6 h-6 rounded-full border items-center justify-center transition-colors ${
-                          isSelected 
-                            ? 'bg-blue-600 border-blue-600' 
-                            : 'bg-white border-slate-300'
-                        }`}>
-                          {isSelected && <Check size={14} color="white" strokeWidth={4} />}
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                  {filteredGroups.length === 0 && (
-                      <Text className="text-center text-slate-400 mt-4">No se encontraron grupos</Text>
-                  )}
-                </View>
-              )}
-
-            </View>
+            </View> 
+            */}
 
           </ScrollView>
         </KeyboardAvoidingView>
 
-        {/* --- FOOTER FIXED --- */}
+        {/* FOOTER */}
         <View 
           className="absolute bottom-0 w-full bg-white border-t border-slate-100 px-6 pt-4 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]"
           style={{ paddingBottom: Math.max(insets.bottom, 24) }}
         >
-          {/* Chip de Resumen */}
-          {totalSelectionCount > 0 && (
-            <View className="self-center bg-slate-900 px-4 py-1.5 rounded-full mb-4 shadow-sm">
-              <Text className="text-white text-xs font-bold">
-                {selectedAthletes.length} atletas • {selectedGroups.length} grupos seleccionados
-              </Text>
-            </View>
-          )}
-
           <Pressable
             onPress={handleAssign}
-            disabled={totalSelectionCount === 0}
+            disabled={loading || saving || athletesToAssign.length === 0}
             className={`w-full h-14 rounded-2xl flex-row items-center justify-center shadow-lg transition-all active:scale-[0.98] ${
-              totalSelectionCount > 0 
+              !loading && !saving && athletesToAssign.length > 0 && deadlineDate
                 ? 'bg-blue-600 shadow-blue-600/30' 
                 : 'bg-slate-200 shadow-none opacity-80'
             }`}
           >
-            <Clock size={20} color={totalSelectionCount > 0 ? "white" : "#94a3b8"} style={{ marginRight: 8 }} />
-            <Text className={`font-bold text-lg tracking-wide ${totalSelectionCount > 0 ? 'text-white' : 'text-slate-500'}`}>
-              Confirmar Asignación
-            </Text>
+            {saving ? (
+                 <ActivityIndicator size="small" color="white" />
+            ) : (
+                <>
+                    <Clock size={20} color={deadlineDate ? "white" : "#94a3b8"} style={{ marginRight: 8 }} />
+                    <Text className={`font-bold text-lg tracking-wide ${deadlineDate ? 'text-white' : 'text-slate-500'}`}>
+                    Confirmar Asignación
+                    </Text>
+                </>
+            )}
           </Pressable>
         </View>
 
