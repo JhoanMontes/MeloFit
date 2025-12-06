@@ -274,7 +274,14 @@ export default function GroupDetail({ navigation, route }: Props) {
   };
 
   const handleAssignTest = () => {
-    navigation.navigate('AssignTestStep1');
+    if (!group) return; 
+
+    navigation.navigate('AssignTestStep1', {
+      targetGroup: {
+        codigo: group.codigo,
+        nombre: group.nombre
+      }
+    });
   };
 
   // --- RENDER ---

@@ -1,5 +1,7 @@
 // navigation/types.ts
 
+import { Prueba } from "views/entrenador/AssignTestStep1";
+
 export type AuthStackParamList = {
   Welcome: undefined;
   Login: undefined;
@@ -31,8 +33,14 @@ export type EntrenadorStackParamList = {
   CreateGroup: undefined;
 MyGroups: undefined; 
 
-  AssignTestStep1: undefined;
-  AssignTestStep2: { test: any };
+  AssignTestStep1: { 
+    targetGroup?: { codigo: string; nombre: string }; 
+  };
+  
+  AssignTestStep2: { 
+    test: Prueba; 
+    targetGroup?: { codigo: string; nombre: string }; 
+  };
 
   FeedbackResults: undefined;
   SendFeedback: { result: any } | undefined;
