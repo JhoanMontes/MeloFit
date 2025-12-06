@@ -8,7 +8,8 @@ import {
   KeyboardAvoidingView, 
   Platform,
   Alert,
-  StatusBar
+  StatusBar,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -16,30 +17,76 @@ import {
   ArrowLeft, 
   Save, 
   Calendar, 
-  Ruler, 
-  Clock 
+  Clock,
+  CheckCircle2
 } from "lucide-react-native";
+import { supabase } from "../../lib/supabase"; 
+import { useAuth } from "../../context/AuthContext";
 import { AprendizStackParamList } from "../../navigation/types";
 
 type Props = NativeStackScreenProps<AprendizStackParamList, "LogResult">;
 
-export default function LogResultScreen({ navigation }: Props) {
+export default function LogResultScreen({ navigation, route }: Props) {
+  // Recibimos los datos de la prueba desde la pantalla anterior
+  const { assignmentId, testName } = route.params;
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   
-  const [formData, setFormData] = useState({
-    value1: '', 
-    value2: '', 
-    notes: ''
+  const [resultValue, setResultValue] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Fecha actual formateada
+  const today = new Date();
+  const dateString = today.toLocaleDateString('es-ES', { 
+    day: 'numeric', 
+    month: 'long', 
+    year: 'numeric' 
   });
 
-  const handleSave = () => {
-    if (!formData.value1 && !formData.value2) {
-      Alert.alert("Faltan datos", "Por favor ingresa al menos un valor.");
+  const handleSave = async () => {
+    if (!resultValue.trim()) {
+      Alert.alert("Faltan datos", "Por favor ingresa tu resultado.");
       return;
     }
-    Alert.alert("¡Excelente!", "Resultado registrado.", [
-      { text: "OK", onPress: () => navigation.navigate("Dashboard") }
-    ]);
+
+    if (!user) return;
+
+    setSaving(true);
+    try {
+      // 1. Obtener documento del atleta
+      const { data: userData, error: userError } = await supabase
+        .from('usuario')
+        .select('no_documento')
+        .eq('auth_id', user.id)
+        .single();
+
+      if (userError) throw userError;
+
+      // 2. Insertar en 'resultado_prueba'
+      const { error: insertError } = await supabase
+        .from('resultado_prueba')
+        .insert({
+          prueba_asignada_id: assignmentId,
+          atleta_no_documento: userData.no_documento,
+          fecha_realizacion: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+          valor: resultValue,
+          // Si agregaste columna de notas/comentarios:
+          // notas: notes 
+        });
+
+      if (insertError) throw insertError;
+
+      Alert.alert("¡Excelente!", "Tu resultado ha sido registrado.", [
+        { text: "OK", onPress: () => navigation.goBack() }
+      ]);
+
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Error", "No se pudo guardar el resultado.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -60,7 +107,7 @@ export default function LogResultScreen({ navigation }: Props) {
               <ArrowLeft size={22} color="#334155" />
             </Pressable>
             <Text className="text-slate-900 text-3xl font-extrabold tracking-tight">Registrar Resultado</Text>
-            <Text className="text-slate-500 text-base font-medium mt-1">Ingresa tu rendimiento en la prueba</Text>
+            <Text className="text-slate-500 text-base font-medium mt-1">Ingresa tu rendimiento</Text>
           </View>
 
           <ScrollView 
@@ -71,9 +118,9 @@ export default function LogResultScreen({ navigation }: Props) {
             {/* --- INFO CARD --- */}
             <View className="bg-white rounded-[32px] shadow-sm border border-slate-100 p-6 mb-6">
               <View className="flex-row justify-between items-start mb-4">
-                <View>
-                  <Text className="text-slate-900 text-xl font-bold mb-1">Test de Cooper</Text>
-                  <Text className="text-slate-500 text-sm font-medium">Prueba de Resistencia</Text>
+                <View className="flex-1 mr-4">
+                  <Text className="text-slate-900 text-xl font-bold mb-1">{testName}</Text>
+                  <Text className="text-slate-500 text-sm font-medium">Nueva entrada</Text>
                 </View>
                 <View className="bg-blue-50 p-2.5 rounded-xl">
                   <Calendar size={22} color="#2563EB" />
@@ -83,74 +130,44 @@ export default function LogResultScreen({ navigation }: Props) {
               <View className="bg-slate-50 rounded-2xl p-4 flex-row items-center border border-slate-100 gap-2">
                 <Clock size={16} color="#64748b" /> 
                 <Text className="text-slate-600 text-sm font-medium">
-                  <Text className="text-blue-600 font-bold">Hoy</Text> • 9 de Octubre, 2025
+                  <Text className="text-blue-600 font-bold">Hoy</Text> • {dateString}
                 </Text>
               </View>
             </View>
 
             {/* --- INPUT FORM CARD --- */}
             <View className="bg-white rounded-[32px] shadow-sm border border-slate-100 p-6 mb-6">
-              <Text className="text-slate-900 font-bold text-lg mb-6">Tus Resultados</Text>
+              <Text className="text-slate-900 font-bold text-lg mb-6">Tu Resultado</Text>
 
-              {/* Fila de Inputs Principales */}
-              <View className="flex-row justify-between mb-6">
-                
-                {/* Input 1: Distancia */}
-                <View className="w-[48%]">
-                  <Text className="text-slate-700 font-semibold text-sm ml-1 mb-2">Distancia</Text>
-                  <View className="bg-slate-50 border border-slate-200 rounded-2xl h-20 justify-center px-4 items-center shadow-inner">
-                    {/* CORRECCIÓN: Usamos style nativo para evitar error en TextInput */}
-                    <TextInput
-                      placeholder="0"
-                      keyboardType="numeric"
-                      value={formData.value1}
-                      onChangeText={(text) => setFormData({ ...formData, value1: text })}
-                      placeholderTextColor="#cbd5e1"
-                      style={{ 
-                        fontSize: 30, 
-                        fontWeight: '800', 
-                        color: '#0f172a', 
-                        textAlign: 'center', 
-                        width: '100%' 
-                      }}
-                    />
-                    <Text className="text-[10px] text-slate-400 font-bold absolute bottom-2">METROS</Text>
-                  </View>
-                </View>
-
-                {/* Input 2: Tiempo */}
-                <View className="w-[48%]">
-                  <Text className="text-slate-700 font-semibold text-sm ml-1 mb-2">Tiempo</Text>
-                  <View className="bg-slate-50 border border-slate-200 rounded-2xl h-20 justify-center px-4 items-center shadow-inner">
-                    {/* CORRECCIÓN: Usamos style nativo */}
-                    <TextInput
-                      placeholder="0"
-                      keyboardType="numeric"
-                      value={formData.value2}
-                      onChangeText={(text) => setFormData({ ...formData, value2: text })}
-                      placeholderTextColor="#cbd5e1"
-                      style={{ 
-                        fontSize: 30, 
-                        fontWeight: '800', 
-                        color: '#0f172a', 
-                        textAlign: 'center', 
-                        width: '100%' 
-                      }}
-                    />
-                    <Text className="text-[10px] text-slate-400 font-bold absolute bottom-2">MINUTOS</Text>
-                  </View>
+              {/* Input Principal */}
+              <View className="mb-6">
+                <Text className="text-slate-700 font-semibold text-sm ml-1 mb-2">Valor Obtenido</Text>
+                <View className="bg-slate-50 border border-slate-200 rounded-2xl h-24 justify-center px-4 items-center shadow-inner">
+                  <TextInput
+                    placeholder="Ej: 10 Reps / 50 Kg / 12 min"
+                    value={resultValue}
+                    onChangeText={setResultValue}
+                    placeholderTextColor="#cbd5e1"
+                    style={{ 
+                      fontSize: 24, 
+                      fontWeight: '800', 
+                      color: '#0f172a', 
+                      textAlign: 'center', 
+                      width: '100%' 
+                    }}
+                  />
+                  <Text className="text-[10px] text-slate-400 font-bold absolute bottom-3">RESULTADO</Text>
                 </View>
               </View>
 
-              {/* Input 3: Notas */}
+              {/* Input Notas */}
               <View>
                 <Text className="text-slate-700 font-semibold text-sm ml-1 mb-2">Notas (Opcional)</Text>
                 <View className="bg-slate-50 border border-slate-200 rounded-2xl p-4 h-32">
-                  {/* CORRECCIÓN: Usamos style nativo */}
                   <TextInput
                     placeholder="¿Cómo te sentiste? Alguna observación..."
-                    value={formData.notes}
-                    onChangeText={(text) => setFormData({ ...formData, notes: text })}
+                    value={notes}
+                    onChangeText={setNotes}
                     multiline
                     textAlignVertical="top"
                     placeholderTextColor="#94a3b8"
@@ -165,36 +182,10 @@ export default function LogResultScreen({ navigation }: Props) {
               </View>
             </View>
 
-            {/* --- SUGERENCIAS RÁPIDAS --- */}
-            <View className="bg-white rounded-[32px] shadow-sm border border-slate-100 p-6 mb-6">
-              <View className="flex-row items-center mb-4 space-x-2">
-                 <Ruler size={18} color="#64748b" />
-                 <Text className="text-slate-500 text-sm font-bold uppercase tracking-wide">Relleno Rápido</Text>
-              </View>
-              
-              <View className="flex-row flex-wrap mb-3">
-                {['2400', '2600', '2800', '3000'].map((val) => (
-                  <Pressable
-                    key={val}
-                    onPress={() => setFormData({ ...formData, value1: val })}
-                    className="px-4 py-2 bg-blue-50 rounded-xl active:bg-blue-100 mr-2 mb-2 border border-blue-100"
-                  >
-                    <Text className="text-blue-700 text-xs font-bold">{val} m</Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              <View className="flex-row flex-wrap">
-                {['10', '11', '12', '13'].map((val) => (
-                  <Pressable
-                    key={val}
-                    onPress={() => setFormData({ ...formData, value2: val })}
-                    className="px-4 py-2 bg-slate-100 rounded-xl active:bg-slate-200 mr-2 mb-2 border border-slate-200"
-                  >
-                    <Text className="text-slate-600 text-xs font-bold">{val} min</Text>
-                  </Pressable>
-                ))}
-              </View>
+            {/* --- TIP --- */}
+            <View className="flex-row items-center justify-center space-x-2 opacity-60 mb-4">
+                <CheckCircle2 size={16} color="#64748b" />
+                <Text className="text-slate-500 text-xs font-medium">Asegúrate de ser honesto con tus datos.</Text>
             </View>
 
           </ScrollView>
@@ -207,10 +198,19 @@ export default function LogResultScreen({ navigation }: Props) {
         >
           <Pressable
             onPress={handleSave}
-            className="w-full bg-blue-600 rounded-2xl h-14 flex-row justify-center items-center shadow-lg shadow-blue-600/30 active:scale-[0.98] active:opacity-90 gap-2"
+            disabled={saving}
+            className={`w-full h-14 rounded-2xl flex-row justify-center items-center shadow-lg active:scale-[0.98] gap-2 ${
+                saving ? 'bg-blue-400' : 'bg-blue-600 shadow-blue-600/30'
+            }`}
           >
-            <Save size={20} color="white" />
-            <Text className="text-white font-bold text-lg tracking-wide">Guardar Resultado</Text>
+            {saving ? (
+                <ActivityIndicator color="white" />
+            ) : (
+                <>
+                    <Save size={20} color="white" />
+                    <Text className="text-white font-bold text-lg tracking-wide">Guardar Resultado</Text>
+                </>
+            )}
           </Pressable>
         </View>
 
