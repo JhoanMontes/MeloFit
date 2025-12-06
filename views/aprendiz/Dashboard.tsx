@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   ScrollView,
   Pressable,
   Modal,
-  StatusBar
+  StatusBar,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -21,20 +22,58 @@ import {
   ChevronRight,
   Trophy,
   MapPin,
-  ClipboardList // Usamos este icono que representa mejor "Mis Pruebas"
+  ClipboardList
 } from "lucide-react-native";
 
+// Importamos Supabase
+import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
 import { AprendizStackParamList } from "../../navigation/types";
 
 type Props = NativeStackScreenProps<AprendizStackParamList, "Dashboard">;
 
 export default function Dashboard({ navigation }: Props) {
-  const { logout } = useAuth();
+  // 1. Obtenemos el objeto 'user' del contexto de autenticación
+  const { user, logout } = useAuth();
   const insets = useSafeAreaInsets();
+  
   const [showProfileModal, setShowProfileModal] = useState(false);
+  
+  // 2. Estado para guardar el nombre real
+  const [userName, setUserName] = useState<string>("Atleta");
+  const [loadingName, setLoadingName] = useState(true);
 
-  // --- COMPONENTE: MODAL DE PERFIL (Igual que antes) ---
+  // 3. Efecto para cargar el nombre desde la base de datos
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user) return;
+
+      try {
+        // Buscamos en la tabla 'usuario' coincidiendo el auth_id
+        const { data, error } = await supabase
+          .from('usuario')
+          .select('nombre_completo')
+          .eq('auth_id', user.id)
+          .single();
+
+        if (error) {
+            console.error("Error fetching profile:", error);
+        }
+
+        if (data && data.nombre_completo) {
+          setUserName(data.nombre_completo);
+        }
+      } catch (error) {
+        console.error("Error general:", error);
+      } finally {
+        setLoadingName(false);
+      }
+    };
+
+    fetchProfile();
+  }, [user]);
+
+  // --- COMPONENTE: MODAL DE PERFIL ---
   const ProfileModal = () => (
     <Modal
       animationType="fade"
@@ -66,7 +105,7 @@ export default function Dashboard({ navigation }: Props) {
             </Pressable>
           </View>
 
-          {/* User Info (Clickable) */}
+          {/* User Info (Dinamico) */}
           <Pressable
             onPress={() => {
               setShowProfileModal(false);
@@ -79,11 +118,12 @@ export default function Dashboard({ navigation }: Props) {
             </View>
 
             <View>
+              {/* Aquí usamos el nombre dinámico */}
               <Text className="text-xl font-bold text-slate-900">
-                Alex Johnson
+                {userName}
               </Text>
               <Text className="text-slate-500 font-medium mt-0.5">
-                Atleta • Nivel Intermedio
+                {user?.email || "Atleta"}
               </Text>
             </View>
           </Pressable>
@@ -101,8 +141,6 @@ export default function Dashboard({ navigation }: Props) {
 
         </View>
       </View>
-
-
     </Modal>
   );
 
@@ -119,9 +157,14 @@ export default function Dashboard({ navigation }: Props) {
             <Text className="text-slate-500 text-sm font-semibold mb-0.5">
               Bienvenido de nuevo,
             </Text>
-            <Text className="text-slate-900 text-2xl font-extrabold tracking-tight">
-              Alex Johnson
-            </Text>
+            {/* Renderizado condicional del nombre */}
+            {loadingName ? (
+                <ActivityIndicator size="small" color="#1e293b" style={{alignSelf: 'flex-start'}} />
+            ) : (
+                <Text className="text-slate-900 text-2xl font-extrabold tracking-tight">
+                {userName}
+                </Text>
+            )}
           </View>
 
           <View className="flex-row items-center gap-3">
@@ -228,7 +271,7 @@ export default function Dashboard({ navigation }: Props) {
         </ScrollView>
       </SafeAreaView>
 
-      {/* --- BOTTOM NAVIGATION CORREGIDO (Estilo Estándar 4 Botones) --- */}
+      {/* --- BOTTOM NAVIGATION (Estilo Estándar 4 Botones) --- */}
       <View
         className="absolute bottom-0 w-full bg-white border-t border-slate-100 flex-row justify-around items-center"
       style={{ 
@@ -258,9 +301,7 @@ export default function Dashboard({ navigation }: Props) {
           <Text className="text-[10px] text-slate-500 font-medium">Datos</Text>
         </Pressable>
 
-        {/* 3. Pruebas (Nuevo diseño integrado) */}
-        {/* Cambié el ícono 'Plus' por 'ClipboardList' porque "Mis Pruebas" suele ser una lista. 
-            Si prefieres '+', solo cambia el icono aquí. */}
+        {/* 3. Pruebas */}
         <Pressable
           onPress={() => navigation.navigate('MisPruebas')}
           className="items-center justify-center min-w-[64px] opacity-60 active:opacity-100"
