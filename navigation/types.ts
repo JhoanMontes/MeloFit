@@ -17,7 +17,10 @@ export type AprendizStackParamList = {
   Dashboard: undefined;
   Notifications: undefined;
   Profile: undefined;
-  LogResult: undefined;
+  LogResult: { 
+    assignmentId: number; 
+    testName: string; 
+  };
   Stats: undefined;
   MisPruebas: undefined;
 };
