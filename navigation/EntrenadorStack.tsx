@@ -22,7 +22,7 @@ import TestAssignmentDetail from "../views/entrenador/TestAssignmentDetail";
 // Vistas de Asignación y Feedback
 import AssignTestStep1 from "../views/entrenador/AssignTestStep1";
 import AssignTestStep2 from "../views/entrenador/AssignTestStep2";
-import FeedbackResults from "../views/entrenador/FeedbackResults";
+import AssignmentsOverview from "../views/entrenador/AssignmentsOverview";
 import SendFeedback from "../views/entrenador/SendFeedback";
 
 // Vistas Compartidas / Perfil
@@ -60,7 +60,7 @@ export default function EntrenadorStack() {
 
       {/* Reportes y Feedback */}
       <Stack.Screen name="CoachReports" component={CoachReports} />
-      <Stack.Screen name="FeedbackResults" component={FeedbackResults} />
+      <Stack.Screen name="AssignmentsOverview" component={AssignmentsOverview} />
       <Stack.Screen name="SendFeedback" component={SendFeedback} />
 
       {/* Perfil y Notificaciones */}

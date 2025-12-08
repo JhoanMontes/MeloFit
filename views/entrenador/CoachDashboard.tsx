@@ -188,7 +188,7 @@ export default function CoachDashboard({ navigation }: Props) {
           <View className="mb-8">
             <View className="flex-row items-center justify-between px-6 mb-4">
                 <Text className="text-slate-900 text-lg font-bold">Estado de Asignaciones</Text>
-                <Pressable onPress={() => navigation.navigate('FeedbackResults')}>
+                <Pressable onPress={() => navigation.navigate('AssignmentsOverview')}>
                     <Text className="text-blue-600 text-sm font-bold">Ver todos</Text>
                 </Pressable>
             </View>

@@ -45,7 +45,7 @@ MyGroups: undefined;
     targetGroup?: { codigo: string; nombre: string }; 
   };
 
-  FeedbackResults: undefined;
+  AssignmentsOverview: undefined;
   SendFeedback: { result: any } | undefined;
 
   GroupDetail: { group: any };
