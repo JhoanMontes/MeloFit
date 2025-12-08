@@ -353,23 +353,49 @@ export default function Dashboard({ navigation }: Props) {
       </SafeAreaView>
 
       {/* FOOTER NAV (Igual que antes) */}
-      <View className="absolute bottom-0 w-full bg-white border-t border-slate-100 flex-row justify-around items-center" style={{ paddingBottom: Math.max(insets.bottom, 20), paddingTop: 12 }}>
+   {/* FOOTER NAV CORREGIDO */}
+      <View 
+        className="absolute bottom-0 w-full bg-white border-t border-slate-100 flex-row items-center" 
+        style={{ 
+            paddingBottom: Math.max(insets.bottom, 20), 
+            paddingTop: 12,
+            flexDirection: 'row',       // Forzamos la fila horizontal
+            justifyContent: 'space-around' // Distribuimos el espacio
+        }}
+      >
+        
+        {/* Botón Inicio */}
         <Pressable className="items-center justify-center min-w-[64px]">
-          <View className="bg-blue-50 px-5 py-1.5 rounded-full mb-1.5"><TrendingUp size={24} color="#2563EB" strokeWidth={2.5} /></View>
+          <View className="bg-blue-50 px-5 py-1.5 rounded-full mb-1.5">
+            <TrendingUp size={24} color="#2563EB" strokeWidth={2.5} />
+          </View>
           <Text className="text-[10px] text-blue-600 font-bold">Inicio</Text>
         </Pressable>
+
+        {/* Botón Datos */}
         <Pressable onPress={() => navigation.navigate('Stats')} className="items-center justify-center min-w-[64px] opacity-60 active:opacity-100">
-          <View className="px-5 py-1.5 mb-1.5"><BarChart3 size={24} color="#64748b" strokeWidth={2.5} /></View>
+          <View className="px-5 py-1.5 mb-1.5">
+            <BarChart3 size={24} color="#64748b" strokeWidth={2.5} />
+          </View>
           <Text className="text-[10px] text-slate-500 font-medium">Datos</Text>
         </Pressable>
+
+        {/* Botón Pruebas */}
         <Pressable onPress={() => navigation.navigate('MisPruebas')} className="items-center justify-center min-w-[64px] opacity-60 active:opacity-100">
-          <View className="px-5 py-1.5 mb-1.5"><ClipboardList size={24} color="#64748b" strokeWidth={2.5} /></View>
+          <View className="px-5 py-1.5 mb-1.5">
+            <ClipboardList size={24} color="#64748b" strokeWidth={2.5} />
+          </View>
           <Text className="text-[10px] text-slate-500 font-medium">Pruebas</Text>
         </Pressable>
+
+        {/* Botón Perfil */}
         <Pressable onPress={() => navigation.navigate('Profile')} className="items-center justify-center min-w-[64px] opacity-60 active:opacity-100">
-          <View className="px-5 py-1.5 mb-1.5"><User size={24} color="#64748b" strokeWidth={2.5} /></View>
+          <View className="px-5 py-1.5 mb-1.5">
+            <User size={24} color="#64748b" strokeWidth={2.5} />
+          </View>
           <Text className="text-[10px] text-slate-500 font-medium">Perfil</Text>
         </Pressable>
+
       </View>
 
     </View>

@@ -50,5 +50,14 @@ MyGroups: undefined;
 
   GroupDetail: { group: any };
 
+ TestAssignmentDetail: { 
+    assignmentId: number; 
+    testName: string; 
+    groupName: string;
+    initialTab?: 'pending' | 'completed'; 
+  };
+
   TestDetail: { test: any };
+
+  AthleteDetail: { athlete: any };
 };

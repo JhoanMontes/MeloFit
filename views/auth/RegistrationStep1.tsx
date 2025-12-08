@@ -139,7 +139,7 @@ export default function RegistrationStep1({ navigation }: Props) {
                     no_documento: formData.documentNumber
                   })
                 }
-                className="w-full bg-blue-600 rounded-2xl h-14 justify-center items-center shadow-lg shadow-blue-600/25 active:opacity-90 active:scale-[0.98]"
+                className="w-full bg-blue-600 rounded-2xl h-14 justify-center items-center shadow-lg  active:opacity-90 active:scale-[0.98]"
               >
                 <Text className="text-white text-lg font-bold tracking-wide">
                   Continuar
