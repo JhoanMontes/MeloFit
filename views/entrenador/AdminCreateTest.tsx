@@ -362,7 +362,7 @@ export default function AdminCreateTest({ navigation }: Props) {
               <Pressable
                 onPress={handleSave}
                 disabled={loading} // Deshabilitar si carga
-                className={`flex-1 bg-blue-600 h-14 rounded-2xl justify-center items-center flex-row shadow-lg shadow-blue-600/30 active:scale-[0.98] ${loading ? 'opacity-70' : ''
+                className={`flex-1 bg-blue-600 h-14 rounded-2xl justify-center items-center flex-row shadow-lg active:scale-[0.98] ${loading ? 'opacity-70' : ''
                   }`}
               >
                 {loading ? (

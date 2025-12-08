@@ -1,302 +1,312 @@
 import React, { useState } from "react";
-import { 
-  View, 
-  Text, 
-  ScrollView, 
-  Pressable, 
-  StatusBar, 
-  Dimensions 
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  StatusBar,
+  Modal,
+  Dimensions,
+  StyleSheet,
+  Platform
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { 
-  ArrowLeft, 
-  Filter, 
-  TrendingUp, 
-  Clock, 
-  CheckCircle2, 
+import { LineChart, PieChart } from "react-native-gifted-charts";
+import {
+  ArrowLeft,
+  Search,
   ChevronRight,
-  MoreHorizontal,
-  Users,
-  BarChart3
+  Clock,
+  CheckCircle2
 } from "lucide-react-native";
 import { EntrenadorStackParamList } from "../../navigation/types";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "AssignmentsOverview">;
 
-// --- MOCK DATA: GRUPOS Y SUS ESTADÍSTICAS ---
-const groupPerformance = [
-  { 
-    id: 1, 
-    name: "Fuerza Avanzada", 
-    members: 12, 
-    avgScore: 85,
-    trend: 'up', // up | down
-    stats: [
-       { label: 'Fuerza', val: 90 },
-       { label: 'Téc.', val: 70 },
-       { label: 'Resis.', val: 50 }
-    ]
+const { width } = Dimensions.get('window');
+
+// --- MOCK DATA ---
+const groupsData = [
+  {
+    id: 1, name: "Fuerza Avanzada", trend: [{ value: 60 }, { value: 80 }, { value: 75 }, { value: 90 }],
+    color: '#4F46E5', avg: 86, activeTests: 3
   },
-  { 
-    id: 2, 
-    name: "Principiantes A", 
-    members: 24, 
-    avgScore: 62,
-    trend: 'down',
-    stats: [
-       { label: 'Fuerza', val: 40 },
-       { label: 'Téc.', val: 55 },
-       { label: 'Resis.', val: 65 }
-    ]
+  {
+    id: 2, name: "Velocidad Elite", trend: [{ value: 50 }, { value: 55 }, { value: 65 }, { value: 70 }],
+    color: '#059669', avg: 72, activeTests: 1
   },
-  { 
-    id: 3, 
-    name: "Velocidad Elite", 
-    members: 8, 
-    avgScore: 92,
-    trend: 'up',
-    stats: [
-       { label: 'Veloc.', val: 95 },
-       { label: 'Pot.', val: 88 },
-       { label: 'Flex.', val: 75 }
-    ]
+  {
+    id: 3, name: "Principiantes", trend: [{ value: 40 }, { value: 30 }, { value: 45 }, { value: 35 }],
+    color: '#EA580C', avg: 45, activeTests: 5
   },
 ];
 
-// --- MOCK DATA: ASIGNACIONES ---
-const allAssignments = [
-  { 
-    id: 1, 
-    group: "Fuerza Avanzada", 
-    test: "Sentadilla Max (1RM)", 
-    deadline: "Hoy, 23:59", 
-    completed: 8, 
-    total: 10, 
-    status: "pending", 
-    avgScore: "120 kg" 
-  },
-  { 
-    id: 2, 
-    group: "Principiantes A", 
-    test: "Test de Cooper", 
-    deadline: "Mañana", 
-    completed: 3, 
-    total: 15, 
-    status: "pending",
-    avgScore: "-" 
-  },
-  { 
-    id: 3, 
-    group: "Velocidad Elite", 
-    test: "100m Planos", 
-    deadline: "Ayer", 
-    completed: 8, 
-    total: 8, 
-    status: "completed",
-    avgScore: "11.2 s" 
-  },
-  { 
-    id: 4, 
-    group: "Fuerza Avanzada", 
-    test: "Press Banca", 
-    deadline: "Hace 2 días", 
-    completed: 10, 
-    total: 10, 
-    status: "completed",
-    avgScore: "95 kg" 
-  },
+const assignmentsList = [
+  { id: 1, title: "Sentadilla Max (1RM)", group: "Fuerza Avanzada", deadline: "Hoy", completed: 8, total: 10, color: '#4F46E5' },
+  { id: 2, title: "Test de Cooper", group: "Principiantes", deadline: "Mañana", completed: 3, total: 15, color: '#EA580C' },
+  { id: 3, title: "100m Planos", group: "Velocidad Elite", deadline: "Ayer", completed: 8, total: 8, color: '#059669' },
+  { id: 4, title: "Flexibilidad", group: "Principiantes", deadline: "3 días", completed: 0, total: 15, color: '#EA580C' },
+  { id: 5, title: "Press Banca", group: "Fuerza Avanzada", deadline: "Semana pasada", completed: 10, total: 10, color: '#4F46E5' },
 ];
 
 export default function AssignmentsOverview({ navigation }: Props) {
-  const [filter, setFilter] = useState<'pending' | 'completed'>('pending');
+  const [selectedFilter, setSelectedFilter] = useState("Todos");
+  const [selectedGroup, setSelectedGroup] = useState<any>(null);
 
-  const filteredList = allAssignments.filter(item => item.status === filter);
+  const filters = ["Todos", "Pendientes", "Completados"];
 
-  return (
-    <View className="flex-1 bg-slate-50">
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+  const filteredAssignments = assignmentsList.filter(item => {
+    if (selectedFilter === "Todos") return true;
+    if (selectedFilter === "Completados") return item.completed === item.total;
+    if (selectedFilter === "Pendientes") return item.completed < item.total;
+    return true;
+  });
+
+  // --- MODAL DETALLE ---
+  const GroupDetailModal = () => (
+    <Modal
+      visible={!!selectedGroup}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setSelectedGroup(null)}
+    >
+      <View style={styles.modalOverlay}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setSelectedGroup(null)} />
         
-        {/* --- HEADER (Consistente con CreateGroup) --- */}
-        <View className="px-6 pt-4 pb-4 bg-slate-50 z-10">
-            <View className="flex-row items-center justify-between mb-2">
-              <View className="flex-row items-center">
-                <Pressable 
-                    onPress={() => navigation.goBack()} 
-                    className="w-12 h-12 bg-white rounded-full items-center justify-center shadow-sm border border-slate-200 mr-4 active:bg-slate-50"
-                >
-                    <ArrowLeft size={22} color="#334155" />
-                </Pressable>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHandleContainer}>
+            <View style={styles.modalHandle} />
+          </View>
+
+          {selectedGroup && (
+            <>
+              <View style={styles.modalHeader}>
                 <View>
-                    <Text className="text-slate-900 text-2xl font-extrabold tracking-tight">Asignaciones</Text>
-                    <Text className="text-slate-500 text-sm font-medium">Gestión y métricas</Text>
+                  <Text style={styles.modalSubtitle}>Reporte Rápido</Text>
+                  <Text style={styles.modalTitle}>{selectedGroup.name}</Text>
+                </View>
+                <View style={styles.modalBadge}>
+                  <Text style={styles.modalBadgeText}>{selectedGroup.avg}</Text>
+                  <Text style={styles.modalBadgeLabel}>Promedio</Text>
                 </View>
               </View>
-              {/* Botón Filtro Extra */}
-              <Pressable className="w-10 h-10 bg-white rounded-xl items-center justify-center border border-slate-100 active:bg-slate-50">
-                  <Filter size={20} color="#64748b" />
+
+              {/* GRÁFICO GRANDE EN MODAL */}
+              <View style={styles.chartContainerLarge}>
+                <LineChart
+                  data={selectedGroup.trend.map((t: any) => ({ value: Number(t.value) }))}
+                  color={selectedGroup.color}
+                  thickness={4}
+                  curved
+                  hideRules
+                  hideYAxisText
+                  hideAxesAndRules
+                  height={120}
+                  width={width - 80} // Width calculado manualmente
+                  startFillColor={selectedGroup.color}
+                  endFillColor="rgba(255,255,255,0.01)"
+                  startOpacity={0.2}
+                  endOpacity={0.01}
+                  areaChart
+                  // Props para evitar crash por interacción
+                  pointerConfig={{ pointerStripHeight: 0, pointerStripWidth: 0 }}
+                  pressEnabled={false}
+                  focusEnabled={false}
+                />
+              </View>
+
+              <Pressable
+                onPress={() => setSelectedGroup(null)}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }
+                ]}
+              >
+                <Text style={styles.closeButtonText}>Cerrar Reporte</Text>
               </Pressable>
-            </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <GroupDetailModal />
+
+      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+
+        {/* HEADER */}
+        <View style={styles.header}>
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+          >
+            <ArrowLeft size={20} color="#1e293b" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Gestión de Pruebas</Text>
+          <Pressable style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}>
+            <Search size={20} color="#1e293b" />
+          </Pressable>
         </View>
 
-        <ScrollView 
-            className="flex-1" 
-            contentContainerStyle={{ paddingBottom: 100 }} 
-            showsVerticalScrollIndicator={false}
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 100 }}
         >
-          
-          {/* --- 1. CARRUSEL DE RENDIMIENTO POR GRUPO --- */}
-          <View className="mb-8">
-            <View className="px-6 mb-4 flex-row items-center justify-between">
-                <Text className="text-slate-900 font-bold text-lg">Métricas por Grupo</Text>
-                <Pressable><Text className="text-blue-600 text-sm font-bold">Ver reporte</Text></Pressable>
-            </View>
 
-            <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false} 
-                contentContainerStyle={{ paddingHorizontal: 24 }}
+          {/* 1. SECCIÓN DE INSIGHTS (CARRUSEL) */}
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Rendimiento por Grupo</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 24 }}
             >
-                {groupPerformance.map((group) => (
-                    <View 
-                        key={group.id} 
-                        className="bg-white p-5 rounded-[28px] mr-4 w-72 shadow-sm border border-slate-100"
-                    >
-                        {/* Header Card */}
-                        <View className="flex-row justify-between items-start mb-4">
-                            <View className="flex-row items-center gap-2">
-                                <View className="bg-blue-50 p-2 rounded-full">
-                                    <Users size={16} color="#2563EB" />
-                                </View>
-                                <View>
-                                    <Text className="font-bold text-slate-900 text-base">{group.name}</Text>
-                                    <Text className="text-xs text-slate-400 font-medium">{group.members} atletas</Text>
-                                </View>
-                            </View>
-                            <View className={`px-2 py-1 rounded-lg ${group.avgScore >= 80 ? 'bg-green-100' : group.avgScore >= 60 ? 'bg-orange-100' : 'bg-red-100'}`}>
-                                <Text className={`font-bold text-xs ${group.avgScore >= 80 ? 'text-green-700' : group.avgScore >= 60 ? 'text-orange-700' : 'text-red-700'}`}>
-                                    Avg: {group.avgScore}
-                                </Text>
-                            </View>
-                        </View>
+              {groupsData.map((group) => (
+                <Pressable
+                  key={group.id}
+                  onPress={() => setSelectedGroup(group)}
+                  style={({ pressed }) => [
+                    styles.cardGroup,
+                    pressed && { transform: [{ scale: 0.96 }] }
+                  ]}
+                >
+                  <View>
+                    <Text style={styles.cardGroupTitle} numberOfLines={2}>{group.name}</Text>
+                    <Text style={styles.cardGroupSubtitle}>{group.activeTests} pruebas activas</Text>
+                  </View>
 
-                        {/* Mini Gráfica de Barras dentro de la Card */}
-                        <View className="flex-row justify-between items-end h-24 pb-2 border-b border-slate-50">
-                            {group.stats.map((stat, idx) => (
-                                <View key={idx} className="items-center flex-1">
-                                    <Text className="text-[10px] font-bold text-slate-400 mb-1">{stat.val}</Text>
-                                    <View className="w-full px-2 h-full justify-end">
-                                        <View 
-                                            className="w-full bg-blue-500 rounded-t-sm opacity-90"
-                                            style={{ height: `${stat.val}%`, borderRadius: 4 }} 
-                                        />
-                                    </View>
-                                    <Text className="text-[10px] text-slate-500 font-semibold mt-1">{stat.label}</Text>
-                                </View>
-                            ))}
-                        </View>
-                        
-                        <Pressable className="mt-3 flex-row items-center justify-center">
-                            <Text className="text-slate-400 text-xs font-medium mr-1">Ver historial del grupo</Text>
-                            <ChevronRight size={12} color="#94a3b8" />
-                        </Pressable>
+                  {/* MINI GRÁFICO (pointerEvents="none" CRUCIAL) */}
+                  <View style={styles.miniChartContainer} pointerEvents="none">
+                    <LineChart
+                      data={group.trend.map((t: any) => ({ value: Number(t.value) }))}
+                      color={group.color}
+                      thickness={2}
+                      curved
+                      hideRules
+                      hideAxesAndRules
+                      height={60}
+                      width={140}
+                      initialSpacing={10}
+                      yAxisOffset={0}
+                      adjustToWidth={false}
+                      isAnimated={false}
+                      pressEnabled={false}
+                      focusEnabled={false}
+                    />
+                  </View>
+
+                  <View style={styles.cardFooter}>
+                    <View style={styles.badgeSmall}>
+                      <Text style={styles.badgeSmallText}>{group.avg}%</Text>
                     </View>
-                ))}
+                    <View style={styles.chevronContainer}>
+                      <ChevronRight size={12} color="#94a3b8" />
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
             </ScrollView>
           </View>
 
+          {/* 2. FILTROS (CHIPS) */}
+          <View style={styles.filtersContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 24 }}
+            >
+              {filters.map((filtro) => {
+                const isActive = selectedFilter === filtro;
+                return (
+                  <Pressable
+                    key={filtro}
+                    onPress={() => setSelectedFilter(filtro)}
+                    style={[
+                      styles.filterChip,
+                      isActive ? styles.filterChipActive : styles.filterChipInactive
+                    ]}
+                  >
+                    <Text style={[
+                      styles.filterText,
+                      isActive ? styles.filterTextActive : styles.filterTextInactive
+                    ]}>
+                      {filtro}
+                    </Text>
+                  </Pressable>
+                )
+              })}
+            </ScrollView>
+          </View>
 
-          {/* --- 2. LISTA DE ASIGNACIONES --- */}
-          <View className="px-6">
-            
-            {/* Tabs de Filtro */}
-            <View className="flex-row mb-6 bg-slate-200/50 p-1.5 rounded-2xl">
-                <Pressable 
-                    onPress={() => setFilter('pending')}
-                    className={`flex-1 py-3 rounded-xl items-center transition-all ${filter === 'pending' ? 'bg-white shadow-sm' : ''}`}
+          {/* 3. LISTA DE ASIGNACIONES */}
+          <View style={styles.listContainer}>
+            {filteredAssignments.map((item) => {
+              const completedVal = Number(item.completed);
+              const totalVal = Number(item.total);
+              const progress = totalVal > 0 ? (completedVal / totalVal) * 100 : 0;
+              const isDone = progress === 100;
+
+              const pieData = [
+                { value: completedVal, color: isDone ? '#22C55E' : item.color },
+                { value: totalVal - completedVal, color: '#F1F5F9' }
+              ];
+
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={() => navigation.navigate('TestAssignmentDetail', {
+                    assignmentId: item.id,
+                    testName: item.title,
+                    groupName: item.group
+                  })}
+                  style={({ pressed }) => [
+                    styles.listItem,
+                    pressed && { backgroundColor: '#F8FAFC' }
+                  ]}
                 >
-                    <Text className={`text-sm font-bold ${filter === 'pending' ? 'text-slate-900' : 'text-slate-500'}`}>En Progreso</Text>
-                </Pressable>
-                <Pressable 
-                    onPress={() => setFilter('completed')}
-                    className={`flex-1 py-3 rounded-xl items-center transition-all ${filter === 'completed' ? 'bg-white shadow-sm' : ''}`}
-                >
-                    <Text className={`text-sm font-bold ${filter === 'completed' ? 'text-slate-900' : 'text-slate-500'}`}>Completadas</Text>
-                </Pressable>
-            </View>
+                  <View style={[styles.colorIndicator, { backgroundColor: item.color }]} />
 
-            {/* Lista Vertical */}
-            <View className="space-y-4">
-                {filteredList.map((item) => {
-                    const progress = (item.completed / item.total) * 100;
-                    const isCompleted = progress === 100;
-
-                    return (
-                        <Pressable 
-                            key={item.id}
-                            onPress={() => navigation.navigate('TestAssignmentDetail', { 
-                                assignmentId: item.id, 
-                                testName: item.test, 
-                                groupName: item.group 
-                            })}
-                            className="bg-white p-5 rounded-[24px] shadow-sm border border-slate-100 active:bg-slate-50 transition-all active:scale-[0.99]"
-                        >
-                            {/* Card Header con Badge de Grupo */}
-                            <View className="flex-row justify-between items-start mb-3">
-                                <View className="flex-1 mr-2">
-                                    <View className="flex-row items-center mb-1">
-                                        <Users size={12} color="#2563EB" style={{ marginRight: 4 }} />
-                                        <Text className="text-xs text-blue-600 font-bold uppercase tracking-wider">{item.group}</Text>
-                                    </View>
-                                    <Text className="text-lg font-bold text-slate-900 leading-6">{item.test}</Text>
-                                </View>
-                                
-                                <View className={`px-2.5 py-1 rounded-lg flex-row items-center gap-1 ${isCompleted ? 'bg-green-100' : 'bg-orange-50'}`}>
-                                    {isCompleted ? <CheckCircle2 size={12} color="#15803d" /> : <Clock size={12} color="#c2410c" />}
-                                    <Text className={`text-[10px] font-bold ${isCompleted ? 'text-green-700' : 'text-orange-700'}`}>
-                                        {item.deadline}
-                                    </Text>
-                                </View>
-                            </View>
-
-                            {/* Barra de Progreso */}
-                            <View className="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                <View className="flex-row justify-between mb-2">
-                                    <Text className="text-xs text-slate-500 font-medium">Evaluados</Text>
-                                    <Text className="text-xs text-slate-900 font-bold">{item.completed}/{item.total} <Text className="text-slate-400">({Math.round(progress)}%)</Text></Text>
-                                </View>
-                                <View className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                                    <View 
-                                        className={`h-full rounded-full ${isCompleted ? 'bg-green-500' : 'bg-blue-600'}`} 
-                                        style={{ width: `${progress}%` }} 
-                                    />
-                                </View>
-                            </View>
-
-                            {/* Footer de la Card */}
-                            <View className="flex-row justify-between items-center">
-                                <View>
-                                    <Text className="text-[10px] text-slate-400 uppercase font-bold">Promedio Grupo</Text>
-                                    <Text className="text-sm font-bold text-slate-700">{item.avgScore}</Text>
-                                </View>
-                                <View className="w-8 h-8 rounded-full bg-slate-100 items-center justify-center">
-                                    <ChevronRight size={16} color="#475569" />
-                                </View>
-                            </View>
-                        </Pressable>
-                    );
-                })}
-
-                {filteredList.length === 0 && (
-                    <View className="items-center justify-center py-12 opacity-50">
-                        <BarChart3 size={48} color="#9CA3AF" />
-                        <Text className="text-slate-400 font-medium mt-4 text-center">
-                            No hay asignaciones {filter === 'pending' ? 'pendientes' : 'completadas'}.
+                  <View style={styles.listItemContent}>
+                    <Text style={styles.listItemTitle}>{item.title}</Text>
+                    <View style={styles.listItemRow}>
+                      <Text style={styles.listItemSubtitle}>{item.group}</Text>
+                      <View style={[
+                        styles.dateBadge,
+                        isDone ? styles.dateBadgeGreen : styles.dateBadgeOrange
+                      ]}>
+                        {isDone ? <CheckCircle2 size={10} color="#15803d" /> : <Clock size={10} color="#c2410c" />}
+                        <Text style={[
+                          styles.dateBadgeText,
+                          isDone ? { color: '#15803d' } : { color: '#c2410c' }
+                        ]}>
+                          {item.deadline}
                         </Text>
+                      </View>
                     </View>
-                )}
-            </View>
+                  </View>
+
+                  <View style={styles.pieChartContainer} pointerEvents="none">
+                    <PieChart
+                      donut
+                      radius={18}
+                      innerRadius={14}
+                      data={pieData}
+                      centerLabelComponent={() => (
+                        <Text style={styles.pieChartLabel}>{Math.round(progress)}%</Text>
+                      )}
+                    />
+                  </View>
+
+                  <ChevronRight size={18} color="#cbd5e1" />
+                </Pressable>
+              );
+            })}
           </View>
 
         </ScrollView>
@@ -304,3 +314,301 @@ export default function AssignmentsOverview({ navigation }: Props) {
     </View>
   );
 }
+
+// --- ESTILOS PUROS (NO TAILWIND) ---
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F8FAFC', // slate-50
+  },
+  // Header
+  header: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    zIndex: 10,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#0f172a',
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  iconButtonPressed: {
+    backgroundColor: '#F1F5F9',
+  },
+  // Section Carousel
+  sectionContainer: {
+    marginBottom: 24,
+    paddingTop: 8,
+  },
+  sectionTitle: {
+    paddingHorizontal: 24,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginBottom: 16,
+  },
+  cardGroup: {
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderRadius: 24,
+    marginRight: 12,
+    width: 160,
+    height: 176,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    justifyContent: 'space-between',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardGroupTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+  cardGroupSubtitle: {
+    fontSize: 10,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+  miniChartContainer: {
+    height: 64,
+    marginLeft: -16,
+    overflow: 'hidden',
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  badgeSmall: {
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  badgeSmallText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#334155',
+  },
+  chevronContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Filters
+  filtersContainer: {
+    marginBottom: 8,
+  },
+  filterChip: {
+    marginRight: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  filterChipActive: {
+    backgroundColor: '#0f172a',
+    borderColor: '#0f172a',
+  },
+  filterChipInactive: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2E8F0',
+  },
+  filterText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  filterTextActive: {
+    color: '#FFFFFF',
+  },
+  filterTextInactive: {
+    color: '#475569',
+  },
+  // List Items
+  listContainer: {
+    paddingHorizontal: 24,
+    marginTop: 16,
+  },
+  listItem: {
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  colorIndicator: {
+    width: 4,
+    height: 40,
+    borderRadius: 2,
+    marginRight: 16,
+  },
+  listItemContent: {
+    flex: 1,
+    marginRight: 8,
+  },
+  listItemTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginBottom: 2,
+  },
+  listItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  listItemSubtitle: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '600',
+    marginRight: 8,
+  },
+  dateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  dateBadgeGreen: { backgroundColor: '#DCFCE7' },
+  dateBadgeOrange: { backgroundColor: '#FFF7ED' },
+  dateBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  pieChartContainer: {
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pieChartLabel: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    color: '#94a3b8',
+  },
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    flex: 1,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 40,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  modalHandleContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalHandle: {
+    width: 48,
+    height: 6,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 3,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#0f172a',
+  },
+  modalBadge: {
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  modalBadgeText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  modalBadgeLabel: {
+    fontSize: 10,
+    color: '#94a3b8',
+  },
+  chartContainerLarge: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 24,
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  closeButton: {
+    backgroundColor: '#0f172a',
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  closeButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+});
