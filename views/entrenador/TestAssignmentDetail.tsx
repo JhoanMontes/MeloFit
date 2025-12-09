@@ -1,5 +1,5 @@
 // TestAssignmentDetail.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
     View, Text, ScrollView, Pressable, StatusBar, Modal, Alert, TouchableOpacity, ActivityIndicator
 } from "react-native";
@@ -11,13 +11,25 @@ import { supabase } from "../../lib/supabase";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "TestAssignmentDetail">;
 
+// Interfaz para los niveles (debe coincidir con la estructura JSONB)
+interface TestRange {
+    id: number;
+    nombre: string;
+    min: number;
+    max: number;
+    color: string;
+    bg: string;
+    border: string;
+}
+
 interface Participant {
     id: number;
     name: string;
     status: 'pending' | 'completed';
     result: string | null;
+    result_id: number | null; // <-- Nuevo: ID del resultado de prueba
     level: string | null;
-    obs: string;
+    obs: string; // <-- Ahora contendrá el mensaje del comentario
     physical: {
         weight?: string | null;
         height?: string | null;
@@ -36,6 +48,10 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
     const [selectedAthlete, setSelectedAthlete] = useState<Participant | null>(null);
     const [modalVisible, setModalVisible] = useState(false);
+    
+    // --- NUEVO: Estado para almacenar los niveles de la prueba ---
+    const [testLevels, setTestLevels] = useState<TestRange[]>([]);
+    const [loadingLevels, setLoadingLevels] = useState(true);
 
     // helpers
     const calcAge = (birth?: string | null) => {
@@ -49,14 +65,69 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
             return null;
         }
     };
+    
+    // --- NUEVO: Función para calcular el nivel del resultado ---
+    const calculateLevel = useCallback((value: string, levels: TestRange[]): string | null => {
+        const val = parseFloat(value);
+        if (isNaN(val) || !Array.isArray(levels) || levels.length === 0) return null;
 
+        const found = levels.find(r => val >= r.min && val <= r.max);
+        return found ? found.nombre : 'Fuera de Rango';
+    }, []);
+
+    // ----------------------------------------------------
+    // 🔥 LÓGICA DE CARGA DE NIVELES (separada para reusar)
+    // ----------------------------------------------------
+    useEffect(() => {
+        const fetchLevels = async () => {
+            if (!assignmentId) return;
+
+            try {
+                // Obtener prueba_id desde prueba_asignada
+                const { data: assignmentData, error: assignError } = await supabase
+                    .from('prueba_asignada')
+                    .select('prueba_id')
+                    .eq('id', assignmentId)
+                    .single();
+                
+                if (assignError || !assignmentData) throw assignError || new Error("Assignment not found.");
+
+                const pruebaId = assignmentData.prueba_id;
+
+                // Obtener la columna 'niveles' (JSONB) desde la tabla prueba
+                const { data: testData, error: testError } = await supabase
+                    .from('prueba')
+                    .select('niveles')
+                    .eq('id', pruebaId)
+                    .single();
+
+                if (testError || !testData) throw testError || new Error("Test levels not found.");
+
+                const loadedLevels: TestRange[] = Array.isArray(testData.niveles) ? (testData.niveles as TestRange[]) : [];
+                setTestLevels(loadedLevels);
+
+            } catch (err) {
+                console.error("Error fetching test levels:", err);
+            } finally {
+                setLoadingLevels(false);
+            }
+        };
+
+        fetchLevels();
+    }, [assignmentId]);
+
+
+    // ------------------------------------------------------------------------
+    // 🔥 LÓGICA PRINCIPAL DE CARGA DE PARTICIPANTES (Actualizada)
+    // ------------------------------------------------------------------------
     useEffect(() => {
         let isActive = true;
         const load = async () => {
+            if (loadingLevels) return; // Esperar a que se carguen los niveles
+
             setLoading(true);
             try {
                 if (!assignmentId) {
-                    // si no recibiste assignmentId, aviso y salgo
                     Alert.alert("Error", "No se recibió assignmentId (prueba_asignada_id).");
                     setParticipants([]);
                     return;
@@ -76,23 +147,26 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
                 const athleteIds = Array.from(new Set(assignedRows.map((r: any) => r.atleta_no_documento)));
 
-                // 2) Traer info de usuario (nombre,email) y atleta (peso,estatura,fecha_nacimiento)
-                // Primero usuarios
+                // 2) Traer info de usuario (nombre) y atleta (peso,estatura,fecha_nacimiento)
                 const { data: usuarios } = await supabase
                     .from("usuario")
-                    .select("no_documento, nombre_completo, email")
+                    .select("no_documento, nombre_completo")
                     .in("no_documento", athleteIds);
 
-                // Luego tabla atleta
                 const { data: atletas } = await supabase
                     .from("atleta")
                     .select("no_documento, estatura, peso, fecha_nacimiento")
                     .in("no_documento", athleteIds);
 
-                // 3) Traer resultados para esta prueba_asignada (si existen)
+                // 3) Traer resultados (valor) y comentarios (mensaje)
                 const { data: resultados } = await supabase
                     .from("resultado_prueba")
-                    .select("id, prueba_asignada_id, atleta_no_documento, valor")
+                    .select(`
+                        id, 
+                        atleta_no_documento, 
+                        valor,
+                        comentario ( mensaje )
+                    `)
                     .eq("prueba_asignada_id", assignmentId);
 
                 // Crear mapas por no_documento para acceso rápido
@@ -101,33 +175,38 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
                 const atletaMap: Record<number, any> = {};
                 (atletas || []).forEach((a: any) => { atletaMap[Number(a.no_documento)] = a; });
-
+                
+                // Mapear resultados por atleta_no_documento
                 const resultadoMap: Record<number, any> = {};
                 (resultados || []).forEach((r: any) => { resultadoMap[Number(r.atleta_no_documento)] = r; });
 
-                // 4) Armar participantes en el orden de assignedRows
-                const built: Participant[] = assignedRows.map((row: any, idx: number) => {
+                // 4) Armar participantes
+                const built: Participant[] = assignedRows.map((row: any) => {
                     const id = Number(row.atleta_no_documento);
                     const u = userMap[id];
                     const at = atletaMap[id];
                     const res = resultadoMap[id];
-
+                    
                     const fullName = u?.nombre_completo ?? `Atleta ${id}`;
                     const resultVal = res?.valor ?? null;
+                    const resultId = res?.id ?? null; // <-- Nuevo ID de resultado
 
-                    // level / isDeficient heuristics:
-                    // no existe columna nivel en resultado_prueba por tu schema, así que lo dejamos null.
-                    // Si quieres una regla para marcar isDeficient, dime la condición; por ahora false.
-                    const level = null;
-                    const isDeficient = false;
+                    // 🔥 CLASIFICAR NIVEL Y OBTENER COMENTARIO
+                    const level = resultVal ? calculateLevel(resultVal, testLevels) : null;
+                    const obs = res?.comentario?.[0]?.mensaje ?? ''; // Extrae el mensaje del comentario (array de 1)
+                    
+                    // Lógica de deficiencia (ejemplo: si el nivel es 'Bajo' o 'Principiante')
+                    // Esto depende de cómo definas el nivel "deficiente" en tus TestRange
+                    const isDeficient = level && level.toLowerCase().includes('principiante'); 
 
                     return {
                         id,
                         name: fullName,
                         status: resultVal ? 'completed' : 'pending',
                         result: resultVal,
-                        level,
-                        obs: '', // si usas tabla comentario podemos mapearla aquí
+                        result_id: resultId, // <-- Nuevo campo
+                        level, // <-- Campo calculado
+                        obs, // <-- Campo obtenido del comentario
                         physical: {
                             weight: at?.peso ? `${at.peso}kg` : null,
                             height: at?.estatura ? `${at.estatura}m` : null,
@@ -139,12 +218,13 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
                 if (isActive) {
                     setParticipants(built);
-                    // si activeTab no tiene participantes, lo ajustamos
                     const hasCompleted = built.some(p => p.status === 'completed');
                     const hasPending = built.some(p => p.status === 'pending');
+                    
                     if (initialTab) {
-                        setActiveTab(initialTab);
+                         setActiveTab(initialTab);
                     } else {
+                        // Asegura que la pestaña activa tenga contenido, si es posible.
                         setActiveTab(hasPending ? 'pending' : (hasCompleted ? 'completed' : 'pending'));
                     }
                 }
@@ -159,7 +239,7 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
         load();
         return () => { isActive = false; };
-    }, [assignmentId]);
+    }, [assignmentId, loadingLevels, calculateLevel]); // Dependencia de loadingLevels y calculateLevel
 
     // Filtrados
     const pendingList = participants.filter(p => p.status === 'pending');
@@ -192,7 +272,7 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
         Alert.alert(
             "Reiniciar Prueba",
-            `¿Deseas invalidar el resultado de ${selectedAthlete.name} y enviarlo a pendientes?`,
+            `¿Deseas invalidar el resultado de ${selectedAthlete.name} y enviarlo a pendientes? Se eliminarán el resultado y los comentarios asociados.`,
             [
                 { text: "Cancelar", style: "cancel" },
                 {
@@ -200,7 +280,9 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            // Eliminar registro en resultado_prueba para esa asignacion y atleta
+                            // La eliminación en 'resultado_prueba' debe eliminar en cascada
+                            // los comentarios si configuraste la FK en tu BD para DELETE CASCADE.
+                            // Asumo que sí, pero si no, debes eliminarlos explícitamente primero.
                             const { error } = await supabase
                                 .from('resultado_prueba')
                                 .delete()
@@ -209,10 +291,10 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
                             if (error) throw error;
 
-                            // Refrescar lista local (y remote ya quedó borrado)
+                            // Refrescar lista local
                             const updated = participants.map(p =>
                                 p.id === selectedAthlete.id
-                                    ? { ...p, status: 'pending', result: null, level: null, isDeficient: false }
+                                    ? { ...p, status: 'pending', result: null, result_id: null, level: null, obs: '', isDeficient: false }
                                     : p
                             );
                             setParticipants(updated);
@@ -220,7 +302,7 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
                             setActiveTab('pending');
                         } catch (err) {
                             console.error("Error reiniciando resultado:", err);
-                            Alert.alert("Error", "No se pudo reiniciar el resultado.");
+                            Alert.alert("Error", "No se pudo reiniciar el resultado. Asegúrate de que los comentarios también se eliminen.");
                         }
                     }
                 }
@@ -246,15 +328,17 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
                         <View className="items-center mb-6"><View className="w-12 h-1.5 bg-gray-300 rounded-full" /></View>
 
                         {selectedAthlete && (
-                            <>
+                            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: '80%' }}>
                                 <View className="flex-row justify-between items-start mb-6">
                                     <View>
                                         <Text className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-1">Resultado Final</Text>
                                         <Text className="text-2xl font-bold text-slate-900">{selectedAthlete.name}</Text>
                                     </View>
+                                    
+                                    {/* 🔥 MOSTRAR NIVEL DE CLASIFICACIÓN */}
                                     <View className={`px-3 py-1 rounded-full ${selectedAthlete.isDeficient ? 'bg-red-100' : 'bg-green-100'}`}>
                                         <Text className={`font-bold text-xs ${selectedAthlete.isDeficient ? 'text-red-700' : 'text-green-700'}`}>
-                                            {selectedAthlete.level ?? '-'}
+                                            {selectedAthlete.level ?? 'Nivel Desconocido'}
                                         </Text>
                                     </View>
                                 </View>
@@ -280,9 +364,10 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
                                     </View>
                                 </View>
 
+                                {/* 🔥 MOSTRAR COMENTARIO */}
                                 <Text className="font-bold text-slate-900 mb-2">Observación del Entrenador</Text>
                                 <View className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-8">
-                                    <Text className="text-slate-700 italic leading-5">"{selectedAthlete.obs || 'Sin observaciones.'}"</Text>
+                                    <Text className="text-slate-700 italic leading-5">"{selectedAthlete.obs || 'El entrenador no dejó observaciones.'}"</Text>
                                 </View>
 
                                 <View className="gap-3">
@@ -303,7 +388,7 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
                                         <Text className="text-white font-bold text-base">Cerrar</Text>
                                     </TouchableOpacity>
                                 </View>
-                            </>
+                            </ScrollView>
                         )}
                     </View>
                 </View>
@@ -333,9 +418,10 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
                 </View>
 
                 <ScrollView className="flex-1 px-6" contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
-                    {loading ? (
+                    {loading || loadingLevels ? (
                         <View className="items-center mt-20">
                             <ActivityIndicator size="large" color="#2563EB" />
+                            <Text className="text-gray-500 mt-2">Cargando participantes y niveles...</Text>
                         </View>
                     ) : (
                         <>
@@ -385,8 +471,9 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
                                                     <View>
                                                         <Text className="font-semibold text-slate-900 text-base leading-tight">{item.name}</Text>
+                                                        {/* 🔥 MOSTRAR NIVEL EN LA LISTA */}
                                                         <Text className={`text-[11px] mt-0.5 ${item.isDeficient ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
-                                                            Nivel: {item.level ?? '-'}
+                                                            Nivel: <Text className="font-bold text-slate-600">{item.level ?? '-'}</Text>
                                                         </Text>
                                                     </View>
                                                 </View>
