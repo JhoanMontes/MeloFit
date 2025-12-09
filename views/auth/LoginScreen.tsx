@@ -1,22 +1,37 @@
 import React, { useState } from "react";
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  Pressable, 
-  StatusBar, 
-  KeyboardAvoidingView, 
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  StatusBar,
+  KeyboardAvoidingView,
   Platform,
-  ScrollView 
+  ScrollView,
+  StyleSheet,
+  Dimensions
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { ArrowLeft, Dumbbell, Check } from "lucide-react-native";
+import { ArrowLeft } from "lucide-react-native";
 import { AuthStackParamList } from "../../navigation/types";
 import { useAuth } from "../../context/AuthContext";
 import CustomAlert, { AlertType } from "../../components/CustomAlert";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "Login">;
+
+// Constantes de color para mantener consistencia
+const COLORS = {
+  primary: "#2563eb", // blue-600
+  background: "#ffffff",
+  inputBg: "#f8fafc", // slate-50
+  borderColor: "#e2e8f0", // slate-200
+  textDark: "#0f172a", // slate-900
+  textLabel: "#334155", // slate-700
+  textMuted: "#64748b", // slate-500
+  placeholder: "#94a3b8",
+  shadow: "#000000",
+};
 
 export default function LoginScreen({ navigation }: Props) {
   const { login } = useAuth();
@@ -26,9 +41,7 @@ export default function LoginScreen({ navigation }: Props) {
     password: "",
   });
 
-  const [isCoach, setIsCoach] = useState(false);
-
-  // MODAL CONFIG
+  // CONFIGURACIÓN DE ALERTA
   const [alertConfig, setAlertConfig] = useState({
     visible: false,
     title: "",
@@ -46,7 +59,7 @@ export default function LoginScreen({ navigation }: Props) {
       return;
     }
 
-    const { success, error } = await login(formData.email, formData.password);
+    const { success } = await login(formData.email, formData.password);
 
     if (!success) {
       showAlert(
@@ -56,16 +69,14 @@ export default function LoginScreen({ navigation }: Props) {
       );
       return;
     }
-
-    // ❗ No mostramos modal aquí, dejamos que AuthContext navegue solo.
   };
 
   return (
-    <View className="flex-1 bg-white">
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       {/* MODAL ALERT */}
-      <CustomAlert 
+      <CustomAlert
         visible={alertConfig.visible}
         title={alertConfig.title}
         message={alertConfig.message}
@@ -73,120 +84,100 @@ export default function LoginScreen({ navigation }: Props) {
         onClose={() => setAlertConfig({ ...alertConfig, visible: false })}
       />
 
-      <SafeAreaView style={{ flex: 1 }}>
-        <KeyboardAvoidingView 
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
+          style={styles.keyboardView}
         >
-          <ScrollView 
-            contentContainerStyle={{ flexGrow: 1 }} 
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            
-            {/* HEADER */}
-            <View className="px-6 pt-4 pb-2">
-              <Pressable 
-                onPress={() => navigation.goBack()} 
-                className="w-12 h-12 rounded-full border border-slate-200 justify-center items-center bg-white shadow-sm active:bg-slate-50"
+
+            {/* HEADER - BOTÓN ATRÁS */}
+            <View style={styles.headerContainer}>
+              <Pressable
+                onPress={() => navigation.goBack()}
+                style={({ pressed }) => [
+                  styles.backButton,
+                  pressed && styles.buttonPressed
+                ]}
               >
                 <ArrowLeft size={22} color="#334155" />
               </Pressable>
             </View>
 
-            {/* TITULO */}
-            <View className="px-6 mt-6 mb-8">
-              <Text className="text-slate-900 text-3xl font-extrabold tracking-tight mb-2">
+            {/* TÍTULO Y DESCRIPCIÓN */}
+            <View style={styles.titleContainer}>
+              <Text style={styles.titleText}>
                 Bienvenido de Nuevo
               </Text>
-              <Text className="text-slate-500 text-base font-medium">
+              <Text style={styles.subtitleText}>
                 Inicia sesión para continuar tu progreso y alcanzar tus metas.
               </Text>
             </View>
 
             {/* FORMULARIO */}
-            <View className="px-6 space-y-5">
-              <View className="space-y-2">
-                <Text className="text-slate-700 font-semibold text-sm ml-1">
-                  Correo Electrónico
-                </Text>
-                <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center focus:border-blue-500">
+            <View style={styles.formContainer}>
+              
+              {/* CAMPO CORREO */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Correo Electrónico</Text>
+                <View style={styles.inputWrapper}>
                   <TextInput
                     placeholder="juan@ejemplo.com"
                     keyboardType="email-address"
                     autoCapitalize="none"
                     value={formData.email}
                     onChangeText={(text) => setFormData({ ...formData, email: text })}
-                    className="flex-1 text-slate-900 text-base"
-                    placeholderTextColor="#94a3b8" 
+                    style={styles.textInput}
+                    placeholderTextColor={COLORS.placeholder}
                   />
                 </View>
               </View>
 
-              <View className="space-y-2">
-                <Text className="text-slate-700 font-semibold text-sm ml-1">
-                  Contraseña
-                </Text>
-                <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center">
+              {/* CAMPO CONTRASEÑA */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Contraseña</Text>
+                <View style={styles.inputWrapper}>
                   <TextInput
                     placeholder="••••••••"
                     secureTextEntry
                     value={formData.password}
                     onChangeText={(text) => setFormData({ ...formData, password: text })}
-                    className="flex-1 text-slate-900 text-base"
-                    placeholderTextColor="#94a3b8"
+                    style={styles.textInput}
+                    placeholderTextColor={COLORS.placeholder}
                   />
                 </View>
-                <Pressable className="items-end pt-1">
-                  <Text className="text-blue-600 text-sm font-bold">
+                <Pressable style={styles.forgotPasswordButton}>
+                  <Text style={styles.forgotPasswordText}>
                     ¿Olvidaste tu contraseña?
                   </Text>
                 </Pressable>
               </View>
 
-              {/* COACH MODE */}
-              <Pressable 
-                onPress={() => setIsCoach(!isCoach)}
-                className={`flex-row items-center mt-4 p-4 rounded-2xl border transition-colors ${
-                  isCoach ? "bg-blue-50 border-blue-200" : "bg-white border-slate-200"
-                }`}
-              >
-                <View 
-                  className={`w-6 h-6 rounded-lg border justify-center items-center mr-3 ${
-                    isCoach ? "bg-blue-600 border-blue-600" : "bg-white border-slate-300"
-                  }`}
-                >
-                  {isCoach && <Check size={14} color="white" strokeWidth={4} />}
-                </View>
-
-                <View className="flex-1">
-                  <Text className={`text-sm font-bold ${isCoach ? "text-blue-800" : "text-slate-700"}`}>
-                    Modo Entrenador
-                  </Text>
-                  <Text className="text-slate-500 text-xs">Accede a herramientas de gestión</Text>
-                </View>
-
-                {isCoach && <Dumbbell size={20} color="#2563eb" />}
-              </Pressable>
             </View>
 
-            <View className="flex-1 min-h-[40px]" />
+            {/* ESPACIO FLEXIBLE */}
+            <View style={styles.spacer} />
 
-            {/* FOOTER */}
-            <View className="px-6 pb-8 pt-4">
+            {/* FOOTER - BOTONES DE ACCIÓN */}
+            <View style={styles.footerContainer}>
               <Pressable
                 onPress={handleLogin}
-                className="w-full bg-blue-600 rounded-2xl h-14 justify-center items-center shadow-lg  active:opacity-90 active:scale-[0.98]"
+                style={({ pressed }) => [
+                  styles.loginButton,
+                  pressed && styles.loginButtonPressed
+                ]}
               >
-                <Text className="text-white text-lg font-bold tracking-wide">
-                  Iniciar Sesión
-                </Text>
+                <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
               </Pressable>
 
-              <View className="flex-row justify-center items-center mt-6 space-x-1">
-                <Text className="text-slate-500 font-medium">¿No tienes una cuenta?</Text>
+              <View style={styles.registerContainer}>
+                <Text style={styles.registerText}>¿No tienes una cuenta?</Text>
                 <Pressable onPress={() => navigation.navigate("RegistrationStep1")}>
-                  <Text className="text-blue-600 font-bold ml-1 p-1">Regístrate</Text>
+                  <Text style={styles.registerLink}>Regístrate</Text>
                 </Pressable>
               </View>
             </View>
@@ -197,3 +188,156 @@ export default function LoginScreen({ navigation }: Props) {
     </View>
   );
 }
+
+// ESTILOS ESTRICTOS
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  safeArea: {
+    flex: 1,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  // Header styles
+  headerContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  backButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: COLORS.background,
+    // Sombra suave en iOS
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    // Sombra en Android
+    elevation: 2,
+  },
+  buttonPressed: {
+    backgroundColor: COLORS.inputBg,
+    transform: [{ scale: 0.98 }],
+  },
+  // Title Styles
+  titleContainer: {
+    paddingHorizontal: 24,
+    marginTop: 24,
+    marginBottom: 32,
+  },
+  titleText: {
+    fontSize: 30,
+    fontWeight: "800",
+    color: COLORS.textDark,
+    letterSpacing: -0.5,
+    marginBottom: 8,
+  },
+  subtitleText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    lineHeight: 24,
+  },
+  // Form Styles
+  formContainer: {
+    paddingHorizontal: 24,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textLabel,
+    marginLeft: 4,
+    marginBottom: 8,
+  },
+  inputWrapper: {
+    width: "100%",
+    height: 56,
+    backgroundColor: COLORS.inputBg,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    justifyContent: "center",
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 16,
+    color: COLORS.textDark,
+  },
+  forgotPasswordButton: {
+    alignItems: "flex-end",
+    paddingTop: 8,
+  },
+  forgotPasswordText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  // Spacer
+  spacer: {
+    flex: 1,
+    minHeight: 40,
+  },
+  // Footer Styles
+  footerContainer: {
+    paddingHorizontal: 24,
+    paddingBottom: 32,
+    paddingTop: 16,
+  },
+  loginButton: {
+    width: "100%",
+    height: 56,
+    backgroundColor: COLORS.primary,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  loginButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  loginButtonText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  registerContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 24,
+  },
+  registerText: {
+    color: COLORS.textMuted,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  registerLink: {
+    color: COLORS.primary,
+    fontWeight: "700",
+    fontSize: 14,
+    marginLeft: 4,
+    padding: 4,
+  },
+});

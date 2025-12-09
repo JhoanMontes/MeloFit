@@ -1,13 +1,14 @@
 import React, { useState } from "react";
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  Pressable, 
-  ScrollView, 
-  KeyboardAvoidingView, 
-  Platform, 
-  StatusBar
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar,
+  StyleSheet
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -17,6 +18,24 @@ import { supabase } from "../../lib/supabase";
 import CustomAlert, { AlertType } from "../../components/CustomAlert";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "RegistrationStep2">;
+
+// --- COLORES Y CONSTANTES ---
+const COLORS = {
+  primary: "#2563eb",     // blue-600
+  primaryLight: "#dbeafe", // blue-100/200 aprox para fondos suaves
+  primaryDark: "#1e3a8a", // blue-900
+  background: "#ffffff",
+  inputBg: "#f8fafc",     // slate-50
+  borderColor: "#e2e8f0", // slate-200
+  borderActive: "#2563eb", // blue-600
+  textDark: "#0f172a",    // slate-900
+  textLabel: "#334155",   // slate-700
+  textMuted: "#64748b",   // slate-500
+  placeholder: "#94a3b8",
+  shadow: "#000000",
+  iconInactive: "#64748b",
+  bgIconInactive: "#f1f5f9", // slate-100
+};
 
 export default function RegistrationStep2({ navigation, route }: Props) {
 
@@ -29,7 +48,7 @@ export default function RegistrationStep2({ navigation, route }: Props) {
     role: "atleta" as "atleta" | "entrenador"
   });
 
-  // 🔹 Estado del modal (reemplaza Alert.alert)
+  // 🔹 Estado del modal
   const [alert, setAlert] = useState({
     visible: false,
     title: "",
@@ -43,7 +62,7 @@ export default function RegistrationStep2({ navigation, route }: Props) {
     if (alert.action) alert.action();
   };
 
-  // 🔹 Función final de registro (idéntica a la original)
+  // 🔹 Función final de registro
   const handleComplete = async () => {
     if (!formData.password || formData.password !== formData.confirmPassword) {
       setAlert({
@@ -93,7 +112,6 @@ export default function RegistrationStep2({ navigation, route }: Props) {
         return;
       }
 
-      // EXACTAMENTE como antes: no navegamos, no hacemos signIn.
       setAlert({
         visible: true,
         title: "Registro exitoso",
@@ -115,7 +133,7 @@ export default function RegistrationStep2({ navigation, route }: Props) {
   };
 
   return (
-    <View className="flex-1 bg-white">
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       <CustomAlert
@@ -126,72 +144,76 @@ export default function RegistrationStep2({ navigation, route }: Props) {
         onClose={closeAlert}
       />
 
-      <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right"]}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
+          style={styles.keyboardView}
         >
           <ScrollView
-            contentContainerStyle={{ flexGrow: 1 }}
+            contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
 
             {/* HEADER */}
-            <View className="px-6 pt-4 pb-2">
+            <View style={styles.headerContainer}>
               <Pressable
                 onPress={() => navigation.goBack()}
-                className="w-12 h-12 rounded-full border border-slate-200 justify-center items-center bg-white shadow-sm active:bg-slate-50"
+                style={({ pressed }) => [
+                  styles.backButton,
+                  pressed && styles.buttonPressed
+                ]}
               >
                 <ArrowLeft size={22} color="#334155" />
               </Pressable>
             </View>
 
-            {/* TÍTULO */}
-            <View className="px-6 mt-4 mb-8">
-              <Text className="text-slate-900 text-3xl font-extrabold tracking-tight mb-2">
+            {/* TÍTULO Y PROGRESO */}
+            <View style={styles.titleContainer}>
+              <Text style={styles.titleText}>
                 Seguridad y Rol
               </Text>
-              <Text className="text-slate-500 text-base font-medium mb-6">
+              <Text style={styles.subtitleText}>
                 Define tu contraseña y tu tipo de usuario.
               </Text>
 
-              <View className="flex-row items-center gap-2">
-                <View className="flex-1 h-2 bg-blue-600 rounded-full" />
-                <View className="flex-1 h-2 bg-blue-600 rounded-full" />
+              {/* Barras de progreso */}
+              <View style={styles.progressContainer}>
+                {/* Paso 1 (Completo) */}
+                <View style={styles.progressBarActive} />
+                {/* Paso 2 (Completo/Activo) */}
+                <View style={styles.progressBarActive} />
               </View>
-              <Text className="text-blue-600 text-xs font-bold mt-2 text-right">
+              <Text style={styles.stepIndicatorText}>
                 Paso Final
               </Text>
             </View>
 
             {/* FORMULARIO */}
-            <View className="px-6 space-y-6">
-              <View className="space-y-4">
+            <View style={styles.formContainer}>
+              
+              {/* --- Sección Contraseña --- */}
+              <View style={styles.sectionSpacing}>
                 
                 {/* Contraseña */}
-                <View className="space-y-2">
-                  <Text className="text-slate-700 font-semibold text-sm ml-1">
-                    Contraseña
-                  </Text>
-                  <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center">
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Contraseña</Text>
+                  <View style={styles.inputWrapper}>
                     <TextInput
                       placeholder="••••••••"
                       secureTextEntry
                       value={formData.password}
                       onChangeText={(text) => setFormData({ ...formData, password: text })}
-                      className="flex-1 text-slate-900 text-base"
-                      placeholderTextColor="#94a3b8"
+                      style={styles.textInput}
+                      placeholderTextColor={COLORS.placeholder}
                     />
                   </View>
                 </View>
 
-                {/* Confirmar contraseña */}
-                <View className="space-y-2">
-                  <Text className="text-slate-700 font-semibold text-sm ml-1">
-                    Confirmar Contraseña
-                  </Text>
-                  <View className="w-full h-14 bg-slate-50 border border-slate-200 rounded-2xl px-4 justify-center">
+                {/* Confirmar Contraseña */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Confirmar Contraseña</Text>
+                  <View style={styles.inputWrapper}>
                     <TextInput
                       placeholder="••••••••"
                       secureTextEntry
@@ -199,132 +221,119 @@ export default function RegistrationStep2({ navigation, route }: Props) {
                       onChangeText={(text) =>
                         setFormData({ ...formData, confirmPassword: text })
                       }
-                      className="flex-1 text-slate-900 text-base"
-                      placeholderTextColor="#94a3b8"
+                      style={styles.textInput}
+                      placeholderTextColor={COLORS.placeholder}
                     />
                   </View>
                 </View>
-
               </View>
 
-              <View className="h-[1px] bg-slate-100 my-2" />
+              {/* Separador */}
+              <View style={styles.divider} />
 
-              {/* Rol */}
-              <View className="space-y-3">
-                <Text className="text-slate-900 font-bold text-lg">
+              {/* --- Sección Rol --- */}
+              <View style={styles.sectionSpacing}>
+                <Text style={styles.sectionTitle}>
                   ¿Cuál es tu objetivo?
                 </Text>
 
-                {/* Atleta */}
+                {/* OPCIÓN 1: ATLETA */}
                 <Pressable
                   onPress={() => setFormData({ ...formData, role: "atleta" })}
-                  className={`flex-row items-center p-4 rounded-2xl border ${
-                    formData.role === "atleta"
-                      ? "bg-blue-50 border-blue-600 shadow-sm"
-                      : "bg-white border-slate-200"
-                  }`}
+                  style={[
+                    styles.roleCard,
+                    formData.role === "atleta" ? styles.roleCardActive : styles.roleCardInactive
+                  ]}
                 >
-                  <View
-                    className={`p-3 rounded-xl mr-4 ${
-                      formData.role === "atleta" ? "bg-blue-200" : "bg-slate-100"
-                    }`}
-                  >
+                  <View style={[
+                    styles.iconBox,
+                    formData.role === "atleta" ? styles.iconBoxActive : styles.iconBoxInactive
+                  ]}>
                     <User
                       size={24}
-                      color={formData.role === "atleta" ? "#1d4ed8" : "#64748b"}
+                      color={formData.role === "atleta" ? COLORS.primary : COLORS.iconInactive}
                     />
                   </View>
 
-                  <View className="flex-1">
-                    <Text
-                      className={`text-base font-bold ${
-                        formData.role === "atleta"
-                          ? "text-blue-900"
-                          : "text-slate-700"
-                      }`}
-                    >
+                  <View style={styles.roleTextContainer}>
+                    <Text style={[
+                      styles.roleTitle,
+                      formData.role === "atleta" ? styles.roleTitleActive : styles.roleTitleInactive
+                    ]}>
                       Soy Deportista
                     </Text>
-                    <Text className="text-slate-500 text-xs mt-0.5">
+                    <Text style={styles.roleSubtitle}>
                       Quiero entrenar y ver mi progreso
                     </Text>
                   </View>
 
-                  <View
-                    className={`w-6 h-6 rounded-full border justify-center items-center ${
-                      formData.role === "atleta"
-                        ? "bg-blue-600 border-blue-600"
-                        : "border-slate-300"
-                    }`}
-                  >
+                  <View style={[
+                    styles.checkCircle,
+                    formData.role === "atleta" ? styles.checkCircleActive : styles.checkCircleInactive
+                  ]}>
                     {formData.role === "atleta" && (
                       <CheckCircle2 size={14} color="white" />
                     )}
                   </View>
                 </Pressable>
 
-                {/* Entrenador */}
+                {/* OPCIÓN 2: ENTRENADOR */}
                 <Pressable
                   onPress={() => setFormData({ ...formData, role: "entrenador" })}
-                  className={`flex-row items-center p-4 rounded-2xl border ${
-                    formData.role === "entrenador"
-                      ? "bg-blue-50 border-blue-600 shadow-sm"
-                      : "bg-white border-slate-200"
-                  }`}
+                  style={[
+                    styles.roleCard,
+                    formData.role === "entrenador" ? styles.roleCardActive : styles.roleCardInactive
+                  ]}
                 >
-                  <View
-                    className={`p-3 rounded-xl mr-4 ${
-                      formData.role === "entrenador"
-                        ? "bg-blue-200"
-                        : "bg-slate-100"
-                    }`}
-                  >
+                  <View style={[
+                    styles.iconBox,
+                    formData.role === "entrenador" ? styles.iconBoxActive : styles.iconBoxInactive
+                  ]}>
                     <Dumbbell
                       size={24}
-                      color={formData.role === "entrenador" ? "#1d4ed8" : "#64748b"}
+                      color={formData.role === "entrenador" ? COLORS.primary : COLORS.iconInactive}
                     />
                   </View>
 
-                  <View className="flex-1">
-                    <Text
-                      className={`text-base font-bold ${
-                        formData.role === "entrenador"
-                          ? "text-blue-900"
-                          : "text-slate-700"
-                      }`}
-                    >
+                  <View style={styles.roleTextContainer}>
+                    <Text style={[
+                      styles.roleTitle,
+                      formData.role === "entrenador" ? styles.roleTitleActive : styles.roleTitleInactive
+                    ]}>
                       Soy Entrenador
                     </Text>
-                    <Text className="text-slate-500 text-xs mt-0.5">
+                    <Text style={styles.roleSubtitle}>
                       Gestionar atletas y rutinas
                     </Text>
                   </View>
 
-                  <View
-                    className={`w-6 h-6 rounded-full border justify-center items-center ${
-                      formData.role === "entrenador"
-                        ? "bg-blue-600 border-blue-600"
-                        : "border-slate-300"
-                    }`}
-                  >
+                  <View style={[
+                    styles.checkCircle,
+                    formData.role === "entrenador" ? styles.checkCircleActive : styles.checkCircleInactive
+                  ]}>
                     {formData.role === "entrenador" && (
                       <CheckCircle2 size={14} color="white" />
                     )}
                   </View>
                 </Pressable>
+
               </View>
 
             </View>
 
-            <View className="flex-1 min-h-[40px]" />
+            {/* Espaciador flexible */}
+            <View style={styles.spacer} />
 
-            {/* Botón final */}
-            <View className="px-6 pb-8 pt-4">
+            {/* BOTÓN FINAL */}
+            <View style={styles.footerContainer}>
               <Pressable
                 onPress={handleComplete}
-                className="w-full bg-blue-600 rounded-2xl h-14 justify-center items-center shadow-lg  active:opacity-90 active:scale-[0.98]"
+                style={({ pressed }) => [
+                  styles.completeButton,
+                  pressed && styles.completeButtonPressed
+                ]}
               >
-                <Text className="text-white text-lg font-bold tracking-wide">
+                <Text style={styles.completeButtonText}>
                   Completar Registro
                 </Text>
               </Pressable>
@@ -336,3 +345,225 @@ export default function RegistrationStep2({ navigation, route }: Props) {
     </View>
   );
 }
+
+// --- ESTILOS ESTRICTOS ---
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  safeArea: {
+    flex: 1,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  // Header
+  headerContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  backButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: COLORS.background,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  buttonPressed: {
+    backgroundColor: COLORS.inputBg,
+    transform: [{ scale: 0.98 }],
+  },
+  // Title & Progress
+  titleContainer: {
+    paddingHorizontal: 24,
+    marginTop: 16,
+    marginBottom: 32,
+  },
+  titleText: {
+    fontSize: 30,
+    fontWeight: "800",
+    color: COLORS.textDark,
+    letterSpacing: -0.5,
+    marginBottom: 8,
+  },
+  subtitleText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    marginBottom: 24,
+  },
+  progressContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8, // Margen entre barras
+  },
+  progressBarActive: {
+    flex: 1,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: COLORS.primary,
+  },
+  stepIndicatorText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 8,
+    textAlign: "right",
+  },
+  // Form Area
+  formContainer: {
+    paddingHorizontal: 24,
+  },
+  sectionSpacing: {
+    marginBottom: 8,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textLabel,
+    marginLeft: 4,
+    marginBottom: 8,
+  },
+  inputWrapper: {
+    width: "100%",
+    height: 56,
+    backgroundColor: COLORS.inputBg,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    justifyContent: "center",
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 16,
+    color: COLORS.textDark,
+  },
+  // Divider
+  divider: {
+    height: 1,
+    backgroundColor: "#f1f5f9", // slate-100
+    marginVertical: 16,
+  },
+  // Role Section
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textDark,
+    marginBottom: 12,
+  },
+  roleCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  roleCardInactive: {
+    backgroundColor: COLORS.background,
+    borderColor: COLORS.borderColor,
+  },
+  roleCardActive: {
+    backgroundColor: "#eff6ff", // blue-50
+    borderColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  iconBox: {
+    padding: 12,
+    borderRadius: 12,
+    marginRight: 16,
+  },
+  iconBoxInactive: {
+    backgroundColor: COLORS.bgIconInactive,
+  },
+  iconBoxActive: {
+    backgroundColor: "#bfdbfe", // blue-200
+  },
+  roleTextContainer: {
+    flex: 1,
+  },
+  roleTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  roleTitleInactive: {
+    color: COLORS.textLabel,
+  },
+  roleTitleActive: {
+    color: COLORS.primaryDark,
+  },
+  roleSubtitle: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  checkCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkCircleInactive: {
+    borderColor: "#cbd5e1", // slate-300
+  },
+  checkCircleActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  // Spacer & Footer
+  spacer: {
+    flex: 1,
+    minHeight: 40,
+  },
+  footerContainer: {
+    paddingHorizontal: 24,
+    paddingBottom: 32,
+    paddingTop: 16,
+  },
+  completeButton: {
+    width: "100%",
+    height: 56,
+    backgroundColor: COLORS.primary,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  completeButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  completeButtonText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+});
