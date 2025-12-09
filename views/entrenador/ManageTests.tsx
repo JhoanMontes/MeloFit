@@ -33,13 +33,41 @@ export default function ManageTests({ navigation }: Props) {
 
   const fetchTests = async () => {
     try {
+      setLoading(true);
+
+      // 1. Obtener el usuario autenticado de Supabase Auth
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        console.error("No hay usuario autenticado");
+        return;
+      }
+
+      // 2. Obtener el 'no_documento' asociado al UUID de autenticación
+      // Consultamos la tabla 'usuario' porque ahí tienes el 'auth_id' vinculado
+      const { data: userData, error: userError } = await supabase
+        .from('usuario')
+        .select('no_documento')
+        .eq('auth_id', user.id)
+        .single();
+
+      if (userError || !userData) {
+        console.error("Error obteniendo perfil del entrenador:", userError);
+        return;
+      }
+
+      const entrenadorId = userData.no_documento;
+
+      // 3. Obtener las pruebas FILTRANDO por el ID del entrenador
       const { data, error } = await supabase
         .from('prueba') 
         .select('*')
+        .eq('entrenador_no_documento', entrenadorId)
         .order('id', { ascending: false });
 
       if (error) throw error;
       if (data) setTests(data);
+
     } catch (error) {
       console.error("Error fetching tests:", error);
     } finally {
