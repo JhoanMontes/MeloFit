@@ -1,7 +1,6 @@
-// navigation/types.ts
+import { Prueba } from "../views/entrenador/AssignTestStep1"; // Ajusta la ruta si es necesario
 
-import { Prueba } from "views/entrenador/AssignTestStep1";
-
+// --- AUTH STACK ---
 export type AuthStackParamList = {
   Welcome: undefined;
   Login: undefined;
@@ -13,19 +12,29 @@ export type AuthStackParamList = {
   };
 };
 
+// --- APRENDIZ (ATLETA) STACK ---
 export type AprendizStackParamList = {
   Dashboard: undefined;
   Notifications: undefined;
   Profile: undefined;
-  LogResult: { 
-    assignmentId: number; 
-    testName: string; 
-  };
   Stats: undefined;
   MisPruebas: undefined;
+  
+  // Vistas de Detalle
+  LogResult: {
+    assignmentId: number;
+    testName: string;
+  };
+  GroupDetail: { 
+    grupoCodigo: string; 
+    nombreGrupo: string 
+  };
+  TestDetail: { 
+    resultId: number 
+  };
 };
 
-// --- RUTAS DEL ENTRENADOR (Actualizado) ---
+// --- ENTRENADOR STACK ---
 export type EntrenadorStackParamList = {
   Dashboard: undefined;
   Notifications: undefined;
@@ -34,15 +43,15 @@ export type EntrenadorStackParamList = {
   ManageTests: undefined;
   AdminCreateTest: undefined;
   CreateGroup: undefined;
-MyGroups: undefined; 
+  MyGroups: undefined;
 
-  AssignTestStep1: { 
-    targetGroup?: { codigo: string; nombre: string }; 
+  AssignTestStep1: {
+    targetGroup?: { codigo: string; nombre: string };
   };
-  
-  AssignTestStep2: { 
-    test: Prueba; 
-    targetGroup?: { codigo: string; nombre: string }; 
+
+  AssignTestStep2: {
+    test: Prueba;
+    targetGroup?: { codigo: string; nombre: string };
   };
 
   AssignmentsOverview: undefined;
@@ -50,11 +59,11 @@ MyGroups: undefined;
 
   GroupDetail: { group: any };
 
- TestAssignmentDetail: { 
-    assignmentId: number; 
-    testName: string; 
+  TestAssignmentDetail: {
+    assignmentId: number;
+    testName: string;
     groupName: string;
-    initialTab?: 'pending' | 'completed'; 
+    initialTab?: 'pending' | 'completed';
   };
 
   TestDetail: { test: any };

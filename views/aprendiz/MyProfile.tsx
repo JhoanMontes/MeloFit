@@ -1,52 +1,69 @@
 import React, { useState, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  Pressable, 
-  ScrollView, 
-  KeyboardAvoidingView, 
-  Platform, 
-  Alert,
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   StatusBar,
   ActivityIndicator,
-  Modal, // Importamos Modal
-  FlatList
+  Modal,
+  FlatList,
+  StyleSheet
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { 
-  ArrowLeft, 
-  Save, 
-  Info, 
-  User, 
-  Lock, 
-  Ruler, 
-  Weight, 
+import {
+  ArrowLeft,
+  Save,
+  Info,
+  User,
+  Lock,
+  Ruler,
+  Weight,
   Calendar,
-  ChevronDown, // Icono para el select
+  ChevronDown,
   Check,
   X
 } from "lucide-react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import DateTimePicker from '@react-native-community/datetimepicker'; 
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { AprendizStackParamList } from "../../navigation/types";
 
-// Integración Supabase
+// Integración Supabase y Contexto
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
+import CustomAlert, { AlertType } from "../../components/CustomAlert";
 
 type Props = NativeStackScreenProps<AprendizStackParamList, "Profile">;
 
-// Interfaz para los géneros de la BD
 interface GenderOption {
   id: number;
   nombre: string;
 }
 
+// --- CONSTANTES DE COLOR ---
+const COLORS = {
+  primary: "#2563eb",     // blue-600
+  primaryLight: "#eff6ff", // blue-50 (fondos suaves)
+  primaryBorder: "#dbeafe", // blue-100
+  background: "#f8fafc",  // slate-50
+  white: "#ffffff",
+  textDark: "#0f172a",    // slate-900
+  textLabel: "#334155",   // slate-700
+  textMuted: "#64748b",   // slate-500
+  textLight: "#94a3b8",   // slate-400
+  borderColor: "#e2e8f0", // slate-200
+  inputBg: "#ffffff",
+  inputDisabledBg: "#f8fafc",
+  shadow: "#000000",
+};
+
 export default function MyProfile({ navigation }: Props) {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  
+
   // Estados de carga
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -57,17 +74,37 @@ export default function MyProfile({ navigation }: Props) {
     documentNumber: '',
     height: '',
     weight: '',
-    genderId: null as number | null, // Guardamos el ID
-    genderName: '' // Guardamos el nombre para mostrarlo
+    genderId: null as number | null,
+    genderName: ''
   });
 
   // Estados Fecha
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Estados Género (Select)
+  // Estados Género
   const [genderOptions, setGenderOptions] = useState<GenderOption[]>([]);
   const [showGenderModal, setShowGenderModal] = useState(false);
+
+  // Estado Alerta Personalizada
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info" as AlertType,
+    onCloseAction: null as (() => void) | null
+  });
+
+  const showAlert = (title: string, message: string, type: AlertType = "info", action: (() => void) | null = null) => {
+    setAlertConfig({ visible: true, title, message, type, onCloseAction: action });
+  };
+
+  const closeAlert = () => {
+    setAlertConfig(prev => ({ ...prev, visible: false }));
+    if (alertConfig.onCloseAction) {
+      alertConfig.onCloseAction();
+    }
+  };
 
   // --- HELPER FECHAS ---
   const parseLocalDate = (dateString: string) => {
@@ -87,14 +124,14 @@ export default function MyProfile({ navigation }: Props) {
     if (selectedDate) setBirthDate(selectedDate);
   };
 
-  // 1. CARGAR DATOS INICIALES (Perfil + Catálogo de Géneros)
+  // 1. CARGAR DATOS INICIALES
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
 
       try {
         setLoading(true);
-        
+
         // A. Cargar catálogo de géneros
         const { data: gendersData } = await supabase.from('genero').select('*');
         if (gendersData) setGenderOptions(gendersData);
@@ -108,7 +145,7 @@ export default function MyProfile({ navigation }: Props) {
 
         if (userError) throw userError;
 
-        // C. Cargar datos del atleta (incluyendo genero_id)
+        // C. Cargar datos del atleta
         const { data: athleteData } = await supabase
           .from('atleta')
           .select('estatura, peso, fecha_nacimiento, genero_id')
@@ -128,7 +165,7 @@ export default function MyProfile({ navigation }: Props) {
         });
 
         if (athleteData?.fecha_nacimiento) {
-            setBirthDate(parseLocalDate(athleteData.fecha_nacimiento));
+          setBirthDate(parseLocalDate(athleteData.fecha_nacimiento));
         }
 
       } catch (error) {
@@ -151,19 +188,20 @@ export default function MyProfile({ navigation }: Props) {
       const weightVal = parseInt(formData.weight);
 
       if (formData.height && isNaN(heightVal)) {
-        Alert.alert("Error", "La altura debe ser un número válido.");
-        setSaving(false); return;
+        showAlert("Dato inválido", "La altura debe ser un número válido.", "warning");
+        setSaving(false);
+        return;
       }
 
       // Objeto de actualización
       const updates: any = {
         estatura: heightVal || null,
         peso: weightVal || null,
-        genero_id: formData.genderId // Guardamos el ID del género
+        genero_id: formData.genderId
       };
 
       if (birthDate) {
-          updates.fecha_nacimiento = getLocalISOString(birthDate);
+        updates.fecha_nacimiento = getLocalISOString(birthDate);
       }
 
       const { error } = await supabase
@@ -173,13 +211,16 @@ export default function MyProfile({ navigation }: Props) {
 
       if (error) throw error;
 
-      Alert.alert("Perfil Actualizado", "Tus datos han sido guardados correctamente.", [
-        { text: "Entendido", onPress: () => navigation.goBack() } 
-      ]);
+      showAlert(
+        "Perfil Actualizado",
+        "Tus datos han sido guardados correctamente.",
+        "success",
+        () => navigation.goBack()
+      );
 
     } catch (error: any) {
       console.error("Error guardando:", error);
-      Alert.alert("Error", "No se pudieron guardar los cambios.");
+      showAlert("Error", "No se pudieron guardar los cambios.", "error");
     } finally {
       setSaving(false);
     }
@@ -187,159 +228,208 @@ export default function MyProfile({ navigation }: Props) {
 
   if (loading) {
     return (
-      <View className="flex-1 bg-slate-50 justify-center items-center">
-        <ActivityIndicator size="large" color="#2563EB" />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-slate-50">
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <KeyboardAvoidingView 
+      {/* Alerta Personalizada */}
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onClose={closeAlert}
+      />
+
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
+          style={styles.keyboardView}
         >
-          <ScrollView 
-            contentContainerStyle={{ paddingBottom: 150 }}
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
 
             {/* HEADER NAV */}
-            <View className="px-6 pt-4 pb-2">
+            <View style={styles.headerContainer}>
               <Pressable
                 onPress={() => navigation.goBack()}
-                className="w-12 h-12 bg-white rounded-full items-center justify-center shadow-sm border border-slate-200 active:bg-slate-50"
+                style={({ pressed }) => [
+                  styles.backButton,
+                  pressed && styles.backButtonPressed
+                ]}
               >
-                <ArrowLeft size={22} color="#334155" />
+                <ArrowLeft size={22} color={COLORS.textLabel} />
               </Pressable>
             </View>
 
             {/* HERO SECTION */}
-            <View className="items-center mt-4 mb-8 px-6">
-              <View className="w-28 h-28 bg-blue-100 rounded-full items-center justify-center mb-5 border-[6px] border-white shadow-sm">
-                <User size={56} color="#2563EB" />
-                <View className="absolute bottom-0 right-0 bg-blue-600 p-2.5 rounded-full border-4 border-white">
+            <View style={styles.heroSection}>
+              <View style={styles.heroImageContainer}>
+                <User size={56} color={COLORS.primary} />
+                <View style={styles.heroBadge}>
                   <User size={14} color="white" />
                 </View>
               </View>
-              <Text className="text-slate-900 text-3xl font-extrabold tracking-tight">Mi Perfil</Text>
-              <Text className="text-slate-500 text-base font-medium mt-1">Actualiza tu información personal</Text>
+              <Text style={styles.heroTitle}>Mi Perfil</Text>
+              <Text style={styles.heroSubtitle}>Actualiza tu información personal</Text>
             </View>
 
             {/* CONTENEDOR PRINCIPAL */}
-            <View className="px-6 gap-y-8">
+            <View style={styles.mainContainer}>
 
               {/* CARD IDENTIDAD */}
-              <View className="bg-white rounded-[32px] shadow-sm border border-slate-100 p-6 gap-y-6">
-                <View className="flex-row items-center justify-between pb-2 border-b border-slate-50">
-                  <View className="flex-row items-center gap-x-3">
-                    <View className="bg-slate-50 p-2 rounded-xl">
-                      <User size={20} color="#64748b" />
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardTitleRow}>
+                    <View style={styles.iconBox}>
+                      <User size={20} color={COLORS.textMuted} />
                     </View>
-                    <Text className="text-slate-900 font-bold text-lg">Identidad</Text>
+                    <Text style={styles.cardTitle}>Identidad</Text>
                   </View>
-                  <View className="bg-slate-100 px-3 py-1.5 rounded-lg flex-row items-center gap-x-1.5">
-                    <Lock size={12} color="#94a3b8" />
-                    <Text className="text-[10px] text-slate-500 font-bold uppercase">Protegido</Text>
+                  <View style={styles.protectedBadge}>
+                    <Lock size={12} color={COLORS.textLight} />
+                    <Text style={styles.protectedText}>Protegido</Text>
                   </View>
                 </View>
 
-                <View className="gap-y-5">
-                  <View className="gap-y-2">
-                    <Text className="text-slate-700 font-semibold text-sm ml-1">Nombre Completo</Text>
-                    <View className="bg-slate-50 border border-slate-200 rounded-2xl px-4 h-14 justify-center">
-                      <TextInput value={formData.name} editable={false} className="text-slate-500 font-medium text-base" />
+                <View style={styles.cardContent}>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Nombre Completo</Text>
+                    <View style={styles.inputWrapperDisabled}>
+                      <TextInput
+                        value={formData.name}
+                        editable={false}
+                        style={styles.inputDisabled}
+                      />
                     </View>
                   </View>
-                  <View className="gap-y-2">
-                    <Text className="text-slate-700 font-semibold text-sm ml-1">Número de Documento</Text>
-                    <View className="bg-slate-50 border border-slate-200 rounded-2xl px-4 h-14 justify-center">
-                      <TextInput value={formData.documentNumber} editable={false} className="text-slate-500 font-medium text-base" />
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Número de Documento</Text>
+                    <View style={styles.inputWrapperDisabled}>
+                      <TextInput
+                        value={formData.documentNumber}
+                        editable={false}
+                        style={styles.inputDisabled}
+                      />
                     </View>
                   </View>
                 </View>
               </View>
 
               {/* CARD DATOS FÍSICOS */}
-              <View className="bg-white rounded-[32px] shadow-sm border border-slate-100 p-6 gap-y-6">
-                <View className="pb-2 border-b border-slate-50">
-                  <Text className="text-slate-900 font-bold text-lg">Datos Físicos</Text>
-                  <Text className="text-xs text-slate-400 font-medium mt-1">Información necesaria para tus métricas</Text>
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardTitle}>Datos Físicos</Text>
+                  <Text style={styles.cardSubtitle}>Información necesaria para tus métricas</Text>
                 </View>
 
-                {/* --- NUEVO: SELECTOR DE GÉNERO --- */}
-                <View className="gap-y-2">
-                  <Text className="text-slate-700 font-semibold text-sm ml-1">Género</Text>
-                  <Pressable 
-                    onPress={() => setShowGenderModal(true)}
-                    className="bg-white border border-slate-200 rounded-2xl px-4 h-14 flex-row items-center justify-between shadow-sm shadow-slate-200/50 active:bg-slate-50"
-                  >
-                    <View className="flex-row items-center">
-                        <User size={20} color="#94a3b8" className="mr-3" />
-                        <Text className={`font-medium text-base ${formData.genderId ? 'text-slate-900' : 'text-slate-400'}`}>
-                            {formData.genderName || "Seleccionar género"}
+                <View style={styles.cardContent}>
+                  {/* SELECTOR DE GÉNERO */}
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Género</Text>
+                    <Pressable
+                      onPress={() => setShowGenderModal(true)}
+                      style={({ pressed }) => [
+                        styles.selectButton,
+                        pressed && styles.selectButtonPressed
+                      ]}
+                    >
+                      <View style={styles.selectContent}>
+                        <User size={20} color={COLORS.textLight} style={styles.inputIcon} />
+                        <Text style={[
+                          styles.selectText,
+                          formData.genderId ? styles.textDark : styles.textLight
+                        ]}>
+                          {formData.genderName || "Seleccionar género"}
                         </Text>
-                    </View>
-                    <ChevronDown size={20} color="#64748b" />
-                  </Pressable>
-                </View>
+                      </View>
+                      <ChevronDown size={20} color={COLORS.textMuted} />
+                    </Pressable>
+                  </View>
 
-                {/* FILA DE ALTURA Y PESO */}
-                <View className="flex-row gap-x-4">
-                  <View className="flex-1 gap-y-2">
-                    <Text className="text-slate-700 font-semibold text-sm ml-1">Altura</Text>
-                    <View className="bg-white border border-slate-200 rounded-2xl px-4 h-16 flex-row items-center focus:border-blue-500 shadow-sm shadow-slate-200/50">
-                      <Ruler size={20} color="#94a3b8" className="mr-3" />
-                      <TextInput
-                        value={formData.height}
-                        onChangeText={(text) => setFormData({ ...formData, height: text })}
-                        keyboardType="numeric"
-                        placeholder="0"
-                        className="flex-1 text-slate-900 font-bold text-lg"
-                      />
-                      <Text className="text-slate-400 text-xs font-bold bg-slate-100 px-2 py-1 rounded">CM</Text>
+                  {/* FILA DE ALTURA Y PESO */}
+                  <View style={styles.row}>
+                    <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                      <Text style={styles.label}>Altura</Text>
+                      <View style={styles.inputWrapperRow}>
+                        <Ruler size={20} color={COLORS.textLight} style={styles.inputIcon} />
+                        <TextInput
+                          value={formData.height}
+                          onChangeText={(text) => setFormData({ ...formData, height: text })}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          style={styles.inputNumber}
+                        />
+                        <View style={styles.unitBadge}>
+                          <Text style={styles.unitText}>CM</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+                      <Text style={styles.label}>Peso</Text>
+                      <View style={styles.inputWrapperRow}>
+                        <Weight size={20} color={COLORS.textLight} style={styles.inputIcon} />
+                        <TextInput
+                          value={formData.weight}
+                          onChangeText={(text) => setFormData({ ...formData, weight: text })}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          style={styles.inputNumber}
+                        />
+                        <View style={styles.unitBadge}>
+                          <Text style={styles.unitText}>KG</Text>
+                        </View>
+                      </View>
                     </View>
                   </View>
 
-                  <View className="flex-1 gap-y-2">
-                    <Text className="text-slate-700 font-semibold text-sm ml-1">Peso</Text>
-                    <View className="bg-white border border-slate-200 rounded-2xl px-4 h-16 flex-row items-center focus:border-blue-500 shadow-sm shadow-slate-200/50">
-                      <Weight size={20} color="#94a3b8" className="mr-3" />
-                      <TextInput
-                        value={formData.weight}
-                        onChangeText={(text) => setFormData({ ...formData, weight: text })}
-                        keyboardType="numeric"
-                        placeholder="0"
-                        className="flex-1 text-slate-900 font-bold text-lg"
+                  {/* FECHA NACIMIENTO */}
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Fecha de Nacimiento</Text>
+                    <Pressable
+                      onPress={() => setShowDatePicker(true)}
+                      style={({ pressed }) => [
+                        styles.selectButton,
+                        pressed && styles.selectButtonPressed
+                      ]}
+                    >
+                      <Calendar size={20} color={COLORS.textLight} style={styles.inputIcon} />
+                      {birthDate ? (
+                        <Text style={[styles.selectText, styles.textDark]}>
+                          {birthDate.toLocaleDateString()}
+                        </Text>
+                      ) : (
+                        <Text style={[styles.selectText, styles.textLight]}>
+                          Seleccionar fecha...
+                        </Text>
+                      )}
+                    </Pressable>
+                    {showDatePicker && (
+                      <DateTimePicker
+                        value={birthDate || new Date(2000, 0, 1)}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={onDateChange}
+                        maximumDate={new Date()}
                       />
-                      <Text className="text-slate-400 text-xs font-bold bg-slate-100 px-2 py-1 rounded">KG</Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* FECHA NACIMIENTO */}
-                <View className="gap-y-2">
-                  <Text className="text-slate-700 font-semibold text-sm ml-1">Fecha de Nacimiento</Text>
-                  <Pressable onPress={() => setShowDatePicker(true)} className="bg-white border border-slate-200 rounded-2xl px-4 h-14 flex-row items-center shadow-sm shadow-slate-200/50 active:bg-slate-50">
-                    <Calendar size={20} color="#94a3b8" className="mr-3" />
-                    {birthDate ? (
-                        <Text className="flex-1 text-slate-900 font-medium text-base">{birthDate.toLocaleDateString()}</Text>
-                    ) : (
-                        <Text className="flex-1 text-slate-400 font-medium text-base">Seleccionar fecha...</Text>
                     )}
-                  </Pressable>
-                  {showDatePicker && (
-                    <DateTimePicker value={birthDate || new Date(2000, 0, 1)} mode="date" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={onDateChange} maximumDate={new Date()} />
-                  )}
+                  </View>
                 </View>
               </View>
 
-              <View className="bg-blue-50/80 border border-blue-100 rounded-2xl p-5 flex-row items-start gap-x-3 mb-4">
-                <Info size={22} color="#2563EB" style={{ marginTop: 2 }} />
-                <Text className="text-blue-900 text-xs leading-5 font-medium flex-1">
+              {/* BANNER INFO */}
+              <View style={styles.infoBanner}>
+                <Info size={22} color={COLORS.primary} style={{ marginTop: 2 }} />
+                <Text style={styles.infoText}>
                   Mantener tus datos actualizados nos ayuda a calcular tu IMC y personalizar tus cargas de entrenamiento.
                 </Text>
               </View>
@@ -348,13 +438,23 @@ export default function MyProfile({ navigation }: Props) {
           </ScrollView>
 
           {/* BOTÓN GUARDAR */}
-          <View className="absolute bottom-0 w-full bg-white border-t border-slate-100 px-6 pt-4 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]" style={{ paddingBottom: Math.max(insets.bottom, 24) }}>
-            <Pressable onPress={handleSave} disabled={saving} className={`w-full h-14 rounded-2xl flex-row justify-center items-center shadow-lg active:scale-[0.98] ${saving ? 'bg-blue-400 shadow-none' : 'bg-blue-600 shadow-blue-600/30'}`}>
-              {saving ? <ActivityIndicator color="white" /> : (
-                  <>
-                    <Save size={20} color="white" className="mr-2" />
-                    <Text className="text-white font-bold text-lg tracking-wide">Guardar Cambios</Text>
-                  </>
+          <View style={[styles.footerContainer, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+            <Pressable
+              onPress={handleSave}
+              disabled={saving}
+              style={({ pressed }) => [
+                styles.saveButton,
+                saving && styles.saveButtonDisabled,
+                pressed && !saving && styles.saveButtonPressed
+              ]}
+            >
+              {saving ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <>
+                  <Save size={20} color="white" style={{ marginRight: 8 }} />
+                  <Text style={styles.saveButtonText}>Guardar Cambios</Text>
+                </>
               )}
             </Pressable>
           </View>
@@ -366,50 +466,53 @@ export default function MyProfile({ navigation }: Props) {
             animationType="fade"
             onRequestClose={() => setShowGenderModal(false)}
           >
-            <Pressable className="flex-1 bg-black/50 justify-end" onPress={() => setShowGenderModal(false)}>
-                <View className="bg-white rounded-t-[32px] p-6 pb-10">
-                    <View className="w-12 h-1.5 bg-slate-200 rounded-full self-center mb-6" />
-                    <View className="flex-row justify-between items-center mb-4">
-                        <Text className="text-xl font-bold text-slate-900">Selecciona tu Género</Text>
-                        <Pressable onPress={() => setShowGenderModal(false)} className="p-2 bg-slate-100 rounded-full">
-                            <X size={20} color="#64748b" />
-                        </Pressable>
-                    </View>
-                    
-                    {genderOptions.length === 0 ? (
-                        <View className="py-4 items-center">
-                            <Text className="text-slate-400">Cargando opciones...</Text>
-                            <ActivityIndicator color="#2563EB" className="mt-2" />
-                        </View>
-                    ) : (
-                        <FlatList 
-                            data={genderOptions}
-                            keyExtractor={(item) => item.id.toString()}
-                            renderItem={({ item }) => (
-                                <Pressable
-                                    onPress={() => {
-                                        setFormData({ ...formData, genderId: item.id, genderName: item.nombre });
-                                        setShowGenderModal(false);
-                                    }}
-                                    className={`p-4 mb-3 rounded-2xl flex-row justify-between items-center border ${
-                                        formData.genderId === item.id 
-                                            ? 'bg-blue-50 border-blue-200' 
-                                            : 'bg-white border-slate-100'
-                                    }`}
-                                >
-                                    <Text className={`text-base font-bold ${formData.genderId === item.id ? 'text-blue-700' : 'text-slate-700'}`}>
-                                        {item.nombre}
-                                    </Text>
-                                    {formData.genderId === item.id && (
-                                        <View className="bg-blue-100 p-1 rounded-full">
-                                            <Check size={16} color="#2563EB" />
-                                        </View>
-                                    )}
-                                </Pressable>
-                            )}
-                        />
-                    )}
+            <Pressable style={styles.modalOverlay} onPress={() => setShowGenderModal(false)}>
+              <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+                <View style={styles.modalHandle} />
+                
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Selecciona tu Género</Text>
+                  <Pressable onPress={() => setShowGenderModal(false)} style={styles.modalCloseButton}>
+                    <X size={20} color={COLORS.textMuted} />
+                  </Pressable>
                 </View>
+
+                {genderOptions.length === 0 ? (
+                  <View style={styles.loadingModal}>
+                    <Text style={styles.textMuted}>Cargando opciones...</Text>
+                    <ActivityIndicator color={COLORS.primary} style={{ marginTop: 8 }} />
+                  </View>
+                ) : (
+                  <FlatList
+                    data={genderOptions}
+                    keyExtractor={(item) => item.id.toString()}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        onPress={() => {
+                          setFormData({ ...formData, genderId: item.id, genderName: item.nombre });
+                          setShowGenderModal(false);
+                        }}
+                        style={[
+                          styles.genderOption,
+                          formData.genderId === item.id && styles.genderOptionSelected
+                        ]}
+                      >
+                        <Text style={[
+                          styles.genderText,
+                          formData.genderId === item.id ? styles.genderTextSelected : styles.genderTextDefault
+                        ]}>
+                          {item.nombre}
+                        </Text>
+                        {formData.genderId === item.id && (
+                          <View style={styles.checkContainer}>
+                            <Check size={16} color={COLORS.primary} />
+                          </View>
+                        )}
+                      </Pressable>
+                    )}
+                  />
+                )}
+              </Pressable>
             </Pressable>
           </Modal>
 
@@ -418,3 +521,394 @@ export default function MyProfile({ navigation }: Props) {
     </View>
   );
 }
+
+// --- ESTILOS ESTRICTOS ---
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 150,
+  },
+  // Header
+  headerContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  backButton: {
+    width: 48,
+    height: 48,
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  backButtonPressed: {
+    backgroundColor: COLORS.background,
+  },
+  // Hero
+  heroSection: {
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 32,
+    paddingHorizontal: 24,
+  },
+  heroImageContainer: {
+    width: 112,
+    height: 112,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 6,
+    borderColor: COLORS.white,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  heroBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: COLORS.primary,
+    padding: 10,
+    borderRadius: 20,
+    borderWidth: 4,
+    borderColor: COLORS.white,
+  },
+  heroTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: COLORS.textDark,
+    letterSpacing: -0.5,
+  },
+  heroSubtitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: COLORS.textMuted,
+    marginTop: 4,
+  },
+  // Main Container
+  mainContainer: {
+    paddingHorizontal: 24,
+    gap: 32, // Espacio entre tarjetas
+  },
+  // Cards
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 32,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLight,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.background,
+    marginBottom: 20,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  iconBox: {
+    backgroundColor: COLORS.background,
+    padding: 8,
+    borderRadius: 12,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.textDark,
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    color: COLORS.textLight,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  protectedBadge: {
+    backgroundColor: COLORS.background,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  protectedText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+  },
+  // Inputs
+  cardContent: {
+    gap: 20,
+  },
+  inputGroup: {
+    gap: 8,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textLabel,
+    marginLeft: 4,
+  },
+  inputWrapperDisabled: {
+    backgroundColor: COLORS.inputDisabledBg,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    borderRadius: 16,
+    height: 56,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  inputDisabled: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: COLORS.textMuted,
+  },
+  // Select Button
+  selectButton: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    borderRadius: 16,
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    // Sombra suave
+    shadowColor: COLORS.borderColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  selectButtonPressed: {
+    backgroundColor: COLORS.background,
+  },
+  selectContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  selectText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  textDark: {
+    color: COLORS.textDark,
+  },
+  textLight: {
+    color: COLORS.textLight,
+  },
+  textMuted: {
+    color: COLORS.textMuted,
+  },
+  // Row Inputs (Height/Weight)
+  row: {
+    flexDirection: 'row',
+  },
+  inputWrapperRow: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    borderRadius: 16,
+    height: 64, // Más alto para los números
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    shadowColor: COLORS.borderColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  inputNumber: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.textDark,
+  },
+  unitBadge: {
+    backgroundColor: COLORS.background,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  unitText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: COLORS.textLight,
+  },
+  // Info Banner
+  infoBanner: {
+    backgroundColor: 'rgba(37, 99, 235, 0.08)', // primary con baja opacidad
+    borderWidth: 1,
+    borderColor: COLORS.primaryBorder,
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 16,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 20,
+    fontWeight: '500',
+    color: '#1e3a8a', // Azul oscuro
+  },
+  // Footer Button
+  footerContainer: {
+    position: 'absolute',
+    bottom: 0,
+    width: '100%',
+    backgroundColor: COLORS.white,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderColor,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  saveButton: {
+    width: '100%',
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#60a5fa', // blue-400
+    shadowOpacity: 0,
+  },
+  saveButtonPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.9,
+  },
+  saveButtonText: {
+    color: COLORS.white,
+    fontSize: 18,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 40,
+    maxHeight: '70%',
+  },
+  modalHandle: {
+    width: 48,
+    height: 6,
+    backgroundColor: COLORS.borderColor,
+    borderRadius: 3,
+    alignSelf: 'center',
+    marginBottom: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: COLORS.textDark,
+  },
+  modalCloseButton: {
+    padding: 8,
+    backgroundColor: COLORS.background,
+    borderRadius: 20,
+  },
+  loadingModal: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  genderOption: {
+    padding: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    backgroundColor: COLORS.white,
+  },
+  genderOptionSelected: {
+    backgroundColor: COLORS.primaryLight,
+    borderColor: '#bfdbfe', // blue-200
+  },
+  genderText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  genderTextDefault: {
+    color: COLORS.textLabel,
+  },
+  genderTextSelected: {
+    color: '#1d4ed8', // blue-700
+  },
+  checkContainer: {
+    backgroundColor: '#dbeafe', // blue-100
+    padding: 4,
+    borderRadius: 12,
+  },
+});

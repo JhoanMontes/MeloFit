@@ -152,7 +152,7 @@ export default function LoginScreen({ navigation }: Props) {
                 </View>
                 <Pressable style={styles.forgotPasswordButton}>
                   <Text style={styles.forgotPasswordText}>
-                    ¿Olvidaste tu contraseña?
+                
                   </Text>
                 </Pressable>
               </View>

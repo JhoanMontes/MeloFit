@@ -6,8 +6,10 @@ import {
   Pressable,
   Modal,
   StatusBar,
-  ActivityIndicator,
-  RefreshControl
+  TextInput,
+  RefreshControl,
+  StyleSheet,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -16,388 +18,427 @@ import {
   Bell,
   User,
   TrendingUp,
-  Plus,
   BarChart3,
-  Calendar,
+  ClipboardList,
+  Users,
+  Plus,
   X,
   LogOut,
   Trophy,
-  MapPin,
-  ClipboardList,
-  CheckCircle2,
-  AlertCircle, // Icono para vencidas
-  Clock // Icono para pendientes
+  MessageSquare,
+  ChevronRight,
+  AlertCircle,
+  Calendar,
+  Clock
 } from "lucide-react-native";
 
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
 import { AprendizStackParamList } from "../../navigation/types";
+import CustomAlert, { AlertType } from "../../components/CustomAlert";
 
 type Props = NativeStackScreenProps<AprendizStackParamList, "Dashboard">;
+
+// --- CONSTANTES DE COLOR ---
+const COLORS = {
+  primary: "#2563eb",
+  primaryLight: "#eff6ff",
+  background: "#f8fafc",
+  white: "#ffffff",
+  textDark: "#0f172a",
+  textMuted: "#64748b",
+  borderColor: "#e2e8f0",
+  success: "#22c55e",
+  warning: "#f59e0b",
+  warningBg: "#fff7ed",
+  danger: "#dc2626",
+  shadow: "#000000",
+};
 
 export default function Dashboard({ navigation }: Props) {
   const { user, logout } = useAuth();
   const insets = useSafeAreaInsets();
-  
-  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // Estados de Datos
+  const [userData, setUserData] = useState<{ nombre: string, doc: number | null }>({ nombre: "Atleta", doc: null });
+  const [myGroups, setMyGroups] = useState<any[]>([]);
+  const [recentResults, setRecentResults] = useState<any[]>([]);
+  const [pendingTests, setPendingTests] = useState<any[]>([]);
+
+  // Estados de UI
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showJoinGroupModal, setShowJoinGroupModal] = useState(false);
+  const [groupCodeInput, setGroupCodeInput] = useState("");
+  const [joining, setJoining] = useState(false);
 
-  const [userName, setUserName] = useState("Atleta");
-  const [lastResult, setLastResult] = useState<any>(null); // Se mantiene para lógica interna
-  const [nextTask, setNextTask] = useState<any>(null);
-  const [mixedHistory, setMixedHistory] = useState<any[]>([]); // Historial mixto
+  // Alerta Personalizada
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info" as AlertType
+  });
 
-  // --- HELPERS DE FECHA ---
-  const parseLocalDate = (dateString: string) => {
-    if (!dateString) return new Date();
-    const [year, month, day] = dateString.split('-').map(Number);
-    return new Date(year, month - 1, day);
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = parseLocalDate(dateString);
-    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+  const showAlert = (title: string, message: string, type: AlertType = "info") => {
+    setAlertConfig({ visible: true, title, message, type });
   };
 
   // --- CARGA DE DATOS ---
   const fetchDashboardData = async () => {
     if (!user) return;
-    
+
     try {
       // 1. Usuario
-      const { data: userData, error: userError } = await supabase
-        .from('usuario').select('no_documento, nombre_completo').eq('auth_id', user.id).single();
+      const { data: userRecord, error: userError } = await supabase
+        .from('usuario')
+        .select('no_documento, nombre_completo')
+        .eq('auth_id', user.id)
+        .single();
       if (userError) throw userError;
-      
-      setUserName(userData.nombre_completo || "Atleta");
-      const docId = userData.no_documento;
 
-      // 2. Traer Resultados (Realizadas)
-      const { data: results, error: resultError } = await supabase
+      setUserData({ nombre: userRecord.nombre_completo || "Atleta", doc: userRecord.no_documento });
+      const docId = userRecord.no_documento;
+
+      // 2. Mis Grupos
+      const { data: groupsData, error: groupsError } = await supabase
+        .from('atleta_has_grupo')
+        .select(`grupo ( codigo, nombre, descripcion )`)
+        .eq('atleta_no_documento', docId);
+      if (groupsError) throw groupsError;
+      setMyGroups(groupsData.map((item: any) => item.grupo) || []);
+
+      // 3. Resultados Recientes (CORREGIDO: Quitamos grupo_codigo)
+      const { data: resultsData, error: resultsError } = await supabase
         .from('resultado_prueba')
         .select(`
-          id, fecha_realizacion, valor,
-          prueba_asignada ( id, prueba ( nombre, tipo_metrica ) )
+          id, valor, fecha_realizacion,
+          prueba_asignada!inner (
+            id,
+            prueba ( nombre, tipo_metrica )
+            
+          ),
+          comentario ( mensaje )
         `)
-        .eq('atleta_no_documento', docId);
-      if (resultError) throw resultError;
+        .eq('atleta_no_documento', docId)
+        .order('fecha_realizacion', { ascending: false })
+        .limit(5);
 
-      // 3. Traer Asignaciones (Pendientes o Vencidas)
-      const { data: assignments, error: assignError } = await supabase
+      if (resultsError) throw resultsError;
+      setRecentResults(resultsData || []);
+
+      // 4. Pruebas Pendientes (Agenda)
+      const { data: assignmentsData, error: assignError } = await supabase
         .from('prueba_asignada_has_atleta')
         .select(`
-          prueba_asignada (
+          prueba_asignada!inner (
             id, fecha_limite,
-            prueba ( id, nombre, descripcion, tipo_metrica )
-          )
+            prueba ( nombre )
+          ),
+          grupo ( nombre ) 
         `)
-        .eq('atleta_no_documento', docId);
+        .eq('atleta_no_documento', docId)
+        .gte('prueba_asignada.fecha_limite', new Date().toISOString().split('T')[0]); // Solo futuras o de hoy
+
       if (assignError) throw assignError;
 
-      // --- PROCESAMIENTO ---
-      const completedIds = results?.map((r: any) => r.prueba_asignada?.id) || [];
-      const today = new Date();
-      today.setHours(0,0,0,0);
+      // Filtramos: Las que NO tengan un resultado ya registrado
+      const completedAssignmentIds = resultsData?.map((r: any) => r.prueba_asignada.id) || [];
 
-      const allEvents: any[] = [];
+      const pending = assignmentsData
+        .filter((item: any) => !completedAssignmentIds.includes(item.prueba_asignada.id))
+        .map((item: any) => ({
+          ...item.prueba_asignada,
+          grupo_nombre: item.grupo?.nombre // Mapeamos el nombre del grupo aquí
+        }));
 
-      // A. Procesar REALIZADAS
-      results?.forEach((r: any) => {
-        allEvents.push({
-          id: r.id, // ID único para key
-          type: 'completed',
-          name: r.prueba_asignada?.prueba?.nombre,
-          value: r.valor,
-          dateRaw: r.fecha_realizacion,
-          dateLabel: formatDate(r.fecha_realizacion),
-          icon: <CheckCircle2 size={18} color="#22C55E" />, // Verde
-          statusColor: "text-green-600",
-          bgColor: "bg-green-50"
-        });
-      });
+      setPendingTests(pending);
 
-      // B. Procesar ASIGNACIONES (Pendientes o Vencidas)
-      const pendingList: any[] = []; // Para calcular el "Siguiente Objetivo"
-
-      assignments?.forEach((item: any) => {
-        const a = item.prueba_asignada;
-        // Si no está completada...
-        if (!completedIds.includes(a.id)) {
-          const deadline = parseLocalDate(a.fecha_limite);
-          
-          if (deadline < today) {
-            // VENCIDA
-            allEvents.push({
-              id: `exp-${a.id}`,
-              type: 'expired',
-              name: a.prueba.nombre,
-              value: "No realizada",
-              dateRaw: a.fecha_limite,
-              dateLabel: `Venció: ${formatDate(a.fecha_limite)}`,
-              icon: <X size={18} color="#EF4444" />, // Rojo
-              statusColor: "text-red-600",
-              bgColor: "bg-red-50"
-            });
-          } else {
-            // ASIGNADA (Pendiente)
-            allEvents.push({
-              id: `pen-${a.id}`,
-              type: 'pending',
-              name: a.prueba.nombre,
-              value: "Pendiente",
-              dateRaw: a.fecha_limite,
-              dateLabel: `Vence: ${formatDate(a.fecha_limite)}`,
-              icon: <Clock size={18} color="#F59E0B" />, // Amarillo/Naranja
-              statusColor: "text-amber-600",
-              bgColor: "bg-amber-50"
-            });
-
-            // Guardamos para calcular "Siguiente Objetivo"
-            pendingList.push({
-              ...a,
-              deadlineDate: deadline
-            });
-          }
-        }
-      });
-
-      // 4. Ordenar Historial Mixto (Por fecha descendente: Lo más reciente arriba)
-      // Nota: Para pendientes usamos fecha limite, para realizadas fecha realizacion
-      allEvents.sort((a, b) => {
-        const dateA = parseLocalDate(a.dateRaw);
-        const dateB = parseLocalDate(b.dateRaw);
-        return dateB.getTime() - dateA.getTime();
-      });
-
-      // Tomamos los últimos 3 eventos para mostrar
-      setMixedHistory(allEvents.slice(0, 3));
-
-      // 5. Calcular Siguiente Objetivo (La pendiente más cercana)
-      pendingList.sort((a, b) => a.deadlineDate.getTime() - b.deadlineDate.getTime());
-      
-      if (pendingList.length > 0) {
-        setNextTask({
-          assignmentId: pendingList[0].id,
-          name: pendingList[0].prueba.nombre,
-          description: pendingList[0].prueba.descripcion,
-          deadline: formatDate(pendingList[0].fecha_limite)
-        });
-      } else {
-        setNextTask(null);
-      }
-
-    } catch (error) {
-      console.error("Error cargando dashboard:", error);
+    } catch (error: any) {
+      console.error("Error fetching dashboard:", error);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useFocusEffect(
-    useCallback(() => { fetchDashboardData(); }, [])
-  );
+  useFocusEffect(useCallback(() => { fetchDashboardData(); }, [user]));
+  const onRefresh = () => { setRefreshing(true); fetchDashboardData(); };
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchDashboardData();
+  // --- LÓGICA UNIRSE A GRUPO ---
+  const handleJoinGroup = async () => {
+    if (!groupCodeInput.trim() || !userData.doc) {
+      showAlert("Código inválido", "Ingresa un código.", "warning");
+      return;
+    }
+    setJoining(true);
+    try {
+      const { data: groupExists } = await supabase.from('grupo').select('codigo, nombre').eq('codigo', groupCodeInput.trim()).single();
+      if (!groupExists) { showAlert("Error", "Grupo no encontrado.", "error"); setJoining(false); return; }
+
+      const { data: already } = await supabase.from('atleta_has_grupo').select('*').eq('atleta_no_documento', userData.doc).eq('grupo_codigo', groupExists.codigo).single();
+      if (already) { showAlert("Info", "Ya estás en este grupo.", "info"); setJoining(false); return; }
+
+      const { error } = await supabase.from('atleta_has_grupo').insert({ atleta_no_documento: userData.doc, grupo_codigo: groupExists.codigo });
+      if (error) throw error;
+
+      showAlert("¡Éxito!", `Te uniste a ${groupExists.nombre}`, "success");
+      setShowJoinGroupModal(false); setGroupCodeInput(""); fetchDashboardData();
+    } catch (e) { showAlert("Error", "No se pudo unir.", "error"); } finally { setJoining(false); }
   };
 
-  // --- RENDER MODAL PERFIL ---
-  const ProfileModal = () => (
-    <Modal animationType="fade" transparent={true} visible={showProfileModal} onRequestClose={() => setShowProfileModal(false)}>
-      <View className="flex-1 bg-slate-900/60 justify-end">
-        <Pressable className="flex-1" onPress={() => setShowProfileModal(false)} />
-        <View className="bg-white rounded-t-[40px] p-6 pb-10 shadow-2xl">
-          <View className="items-center mb-4"><View className="w-12 h-1.5 bg-slate-200 rounded-full" /></View>
-          <View className="flex-row justify-between items-center mb-8">
-            <Text className="text-2xl font-bold text-slate-900 tracking-tight">Tu Cuenta</Text>
-            <Pressable onPress={() => setShowProfileModal(false)} className="p-2 bg-slate-100 rounded-full active:bg-slate-200"><X size={20} color="#64748b" /></Pressable>
-          </View>
-          <Pressable onPress={() => { setShowProfileModal(false); navigation.navigate("Profile"); }} className="flex-row items-center bg-slate-50 p-4 rounded-3xl mb-8 border border-slate-100 active:bg-slate-100">
-            <View className="w-16 h-16 bg-blue-100 rounded-full items-center justify-center mr-4 border-2 border-white"><User size={30} color="#2563EB" /></View>
-            <View>
-              <Text className="text-xl font-bold text-slate-900">{userName}</Text>
-              <Text className="text-slate-500 font-medium mt-0.5">{user?.email}</Text>
-            </View>
-          </Pressable>
-          <Pressable onPress={() => { setShowProfileModal(false); logout(); }} className="w-full bg-red-50 py-4 rounded-2xl flex-row items-center justify-center space-x-2 active:bg-red-100">
-            <LogOut size={20} color="#DC2626" /><Text className="text-red-600 font-bold text-base">Cerrar Sesión</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
-
   return (
-    <View className="flex-1 bg-slate-50">
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <ProfileModal />
+      <CustomAlert visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} type={alertConfig.type} onClose={() => setAlertConfig({ ...alertConfig, visible: false })} />
 
-      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-
-        {/* HEADER */}
-        <View className="px-6 pb-4 mt-3 flex-row items-center justify-between">
-          <View>
-            <Text className="text-slate-500 text-sm font-semibold mb-0.5">Bienvenido de nuevo,</Text>
-            <Text className="text-slate-900 text-2xl font-extrabold tracking-tight">{userName}</Text>
+      {/* MODAL PERFIL */}
+      <Modal animationType="fade" transparent={true} visible={showProfileModal} onRequestClose={() => setShowProfileModal(false)}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setShowProfileModal(false)} />
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Tu Cuenta</Text>
+              <Pressable onPress={() => setShowProfileModal(false)} style={styles.closeButton}><X size={20} color={COLORS.textMuted} /></Pressable>
+            </View>
+            <Pressable onPress={() => { setShowProfileModal(false); navigation.navigate("Profile"); }} style={styles.profileCard}>
+              <View style={styles.profileIconContainer}><User size={30} color={COLORS.primary} /></View>
+              <View style={{ flex: 1 }}><Text style={styles.profileName}>{userData.nombre}</Text><Text style={styles.profileEmail}>{user?.email}</Text></View>
+              <ChevronRight size={20} color={COLORS.textMuted} />
+            </Pressable>
+            <Pressable onPress={() => { setShowProfileModal(false); logout(); }} style={styles.logoutButton}><LogOut size={20} color="#DC2626" /><Text style={styles.logoutText}>Cerrar Sesión</Text></Pressable>
           </View>
-          <View className="flex-row items-center gap-3">
-            <Pressable onPress={() => navigation.navigate('Notifications')} className="w-12 h-12 bg-white rounded-full items-center justify-center shadow-sm border border-slate-100">
-              <Bell size={22} color="#334155" />
-              <View className="absolute top-3 right-3.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
-            </Pressable>
-            <Pressable onPress={() => setShowProfileModal(true)} className="w-12 h-12 bg-blue-50 rounded-full items-center justify-center border border-blue-100">
-              <User size={22} color="#2563EB" />
-            </Pressable>
+        </View>
+      </Modal>
+
+      {/* MODAL UNIR GRUPO */}
+      <Modal animationType="slide" transparent={true} visible={showJoinGroupModal} onRequestClose={() => setShowJoinGroupModal(false)}>
+        <View style={styles.modalOverlayCenter}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setShowJoinGroupModal(false)} />
+          <View style={styles.modalContentCenter}>
+            <Text style={styles.modalTitleCenter}>Unirse a un Equipo</Text>
+            <Text style={styles.modalSubtitleCenter}>Ingresa el código que te dio tu entrenador.</Text>
+            <View style={styles.inputContainer}>
+              <Users size={20} color={COLORS.textMuted} style={{ marginRight: 10 }} />
+              <TextInput placeholder="Ej: G-123" placeholderTextColor={COLORS.textMuted} value={groupCodeInput} onChangeText={setGroupCodeInput} style={styles.textInput} autoCapitalize="characters" />
+            </View>
+            <View style={styles.modalActions}>
+              <Pressable onPress={() => setShowJoinGroupModal(false)} style={styles.btnCancel}><Text style={styles.btnCancelText}>Cancelar</Text></Pressable>
+              <Pressable onPress={handleJoinGroup} style={styles.btnConfirm} disabled={joining}>
+                {joining ? <ActivityIndicator color="white" size="small" /> : <Text style={styles.btnConfirmText}>Unirse</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
+        {/* HEADER */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerSubtitle}>Bienvenido,</Text>
+            <Text style={styles.headerTitle}>{userData.nombre}</Text>
+          </View>
+          <View style={styles.headerIcons}>
+            <Pressable onPress={() => navigation.navigate('Notifications')} style={styles.iconButton}><Bell size={22} color={COLORS.textMuted} /></Pressable>
+            <Pressable onPress={() => setShowProfileModal(true)} style={[styles.iconButton, styles.profileButton]}><User size={22} color={COLORS.primary} /></Pressable>
           </View>
         </View>
 
-        {/* SCROLL CONTENT */}
-        <ScrollView 
-          className="flex-1 px-6" 
-          contentContainerStyle={{ paddingBottom: 100 }} 
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#2563EB"]} />}
-        >
-          
-          {/* 1. HERO CARD (COMENTADO) */}
-          {/* ... (código comentado) ... */}
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}>
 
-          {/* 2. SIGUIENTE OBJETIVO */}
-          <View className="bg-white rounded-[28px] p-6 shadow-sm border border-slate-100 mb-6 mt-4">
-            <View className="flex-row justify-between items-start mb-4">
-              <View className="flex-1 mr-2">
-                <Text className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Siguiente Objetivo</Text>
-                <Text className="text-slate-900 text-xl font-bold">
-                    {nextTask ? nextTask.name : "Sin pendientes"}
-                </Text>
-              </View>
-              <View className="bg-blue-50 p-2.5 rounded-xl">
-                <Calendar size={22} color="#2563EB" />
-              </View>
-            </View>
-            
-            {nextTask ? (
-                <View className="flex-row items-center space-x-2 mb-6 bg-slate-50 p-3 rounded-xl">
-                    <MapPin size={16} color="#64748b" />
-                    <Text className="text-slate-600 text-sm font-medium">Vence: {nextTask.deadline}</Text>
-                </View>
-            ) : (
-                <View className="mb-6">
-                    <Text className="text-slate-400 text-sm">No tienes pruebas próximas asignadas.</Text>
-                </View>
-            )}
+          {/* SECCIÓN 1: PRÓXIMOS RETOS (AGENDA) */}
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Agenda</Text>
 
-            <Pressable 
-                onPress={() => {
-                    if (nextTask) {
-                        navigation.navigate('LogResult', { assignmentId: nextTask.assignmentId, testName: nextTask.name });
-                    } else {
-                        navigation.navigate('MisPruebas');
-                    }
-                }} 
-                className={`w-full rounded-2xl h-14 flex-row justify-center items-center shadow-lg active:opacity-90 active:scale-[0.98] ${
-                    nextTask ? 'bg-blue-600 shadow-blue-600/20' : 'bg-slate-200 shadow-none'
-                }`}
-            >
-              {nextTask ? (
-                  <>
-                    <Plus size={20} color="white" style={{ marginRight: 8 }} strokeWidth={3} />
-                    <Text className="text-white font-bold text-base tracking-wide">Registrar Resultado</Text>
-                  </>
-              ) : (
-                  <Text className="text-slate-500 font-bold text-base">Ver todas las pruebas</Text>
-              )}
-            </Pressable>
-          </View>
-
-          {/* 3. HISTORIAL RECIENTE (MEZCLADO) */}
-          <View>
-            <Text className="text-slate-900 text-lg font-bold mb-4 px-1">Actividad Reciente</Text>
-            {mixedHistory.length > 0 ? (
-                <View className="bg-white rounded-[28px] p-2 shadow-sm border border-slate-100">
-                {mixedHistory.map((activity, index) => (
-                    <View key={activity.id} className={`flex-row items-center justify-between p-4 ${index !== mixedHistory.length - 1 ? 'border-b border-slate-50' : ''}`}>
-                        
-                        {/* IZQUIERDA: ICONO + NOMBRE + VALOR */}
-                        <View className="flex-row items-center space-x-4 flex-1 mr-4">
-                            <View className={`w-10 h-10 rounded-full items-center justify-center ${activity.bgColor}`}>
-                                {activity.icon}
-                            </View>
-                            <View className="flex-1">
-                                <Text className="text-slate-900 font-bold text-base" numberOfLines={1}>{activity.name}</Text>
-                                {/* Valor condicional según estado */}
-                                <Text className={`text-sm font-medium ${
-                                    activity.type === 'expired' ? 'text-red-500' : 
-                                    activity.type === 'pending' ? 'text-amber-500' : 'text-slate-500'
-                                }`}>
-                                    {activity.value}
-                                </Text>
-                            </View>
-                        </View>
-
-                        {/* DERECHA: FECHA */}
-                        <Text className="text-xs text-slate-400 font-semibold bg-slate-50 px-2 py-1 rounded-lg">
-                            {activity.dateLabel}
-                        </Text>
+            {pendingTests.length > 0 ? (
+              pendingTests.map((test, index) => (
+                <View key={index} style={styles.pendingCard}>
+                  <View style={styles.pendingHeader}>
+                    <View style={styles.pendingBadge}>
+                      <AlertCircle size={16} color={COLORS.warning} />
+                      <Text style={styles.pendingBadgeText}>Pendiente</Text>
                     </View>
-                ))}
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Clock size={14} color={COLORS.textMuted} style={{ marginRight: 4 }} />
+                      <Text style={styles.pendingDate}>Vence: {new Date(test.fecha_limite).toLocaleDateString()}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.pendingTitle}>{test.prueba?.nombre}</Text>
+                  <Text style={styles.pendingSubtitle}>Grupo: {test.grupo_nombre || "General"}</Text>
                 </View>
+              ))
             ) : (
-                <Text className="text-slate-400 text-center mt-2 italic">Aún no hay actividad reciente.</Text>
+              <View style={styles.emptyPendingBox}>
+                <Calendar size={24} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
+                <Text style={styles.emptyStateText}>¡Estás al día! No tienes pruebas pendientes.</Text>
+              </View>
             )}
           </View>
+
+          {/* SECCIÓN 2: MIS GRUPOS */}
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Mis Grupos</Text>
+              {/* ... botón unirse ... */}
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.groupsScroll}>
+              {myGroups.map((group, index) => (
+                <Pressable
+                  key={index}
+                  style={styles.groupCard}
+                  // AQUI ESTÁ LA CLAVE DEL UX FLUIDO:
+                  onPress={() => navigation.navigate('GroupDetail', {
+                    grupoCodigo: group.codigo,
+                    nombreGrupo: group.nombre
+                  })}
+                >
+                  <View style={styles.groupIconBg}><Users size={24} color={COLORS.primary} /></View>
+                  <Text style={styles.groupName} numberOfLines={1}>{group.nombre}</Text>
+                  <Text style={styles.groupDesc} numberOfLines={1}>{group.descripcion}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* SECCIÓN 3: HISTORIAL */}
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Actividad Reciente</Text>
+
+            {recentResults.length > 0 ? (
+              recentResults.map((res) => (
+                <View key={res.id} style={styles.resultCard}>
+                  <View style={styles.resultHeader}>
+                    <View style={styles.resultInfo}>
+                      <Text style={styles.testName}>{res.prueba_asignada?.prueba?.nombre}</Text>
+                      {/* Nota: En resultados históricos no mostramos grupo porque no lo tenemos en esa query. 
+                          Se podría hacer una query adicional, pero para no sobrecargar, lo dejamos simple. */}
+                      <Text style={styles.testDate}>{new Date(res.fecha_realizacion).toLocaleDateString()}</Text>
+                    </View>
+                    <View style={styles.badgeValue}>
+                      <Trophy size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
+                      <Text style={styles.badgeText}>{res.valor} {res.prueba_asignada?.prueba?.tipo_metrica}</Text>
+                    </View>
+                  </View>
+
+                  {res.comentario && res.comentario.length > 0 && (
+                    <View style={styles.feedbackContainer}>
+                      <MessageSquare size={16} color={COLORS.textMuted} style={{ marginTop: 2 }} />
+                      <Text style={styles.feedbackText}>"{res.comentario[0].mensaje}"</Text>
+                    </View>
+                  )}
+                </View>
+              ))
+            ) : (
+              <View style={styles.emptyResultsContainer}>
+                <ClipboardList size={48} color={COLORS.borderColor} />
+                <Text style={styles.emptyResultsTitle}>Sin registros</Text>
+                <Text style={styles.emptyResultsDesc}>Tu entrenador aún no ha subido resultados.</Text>
+              </View>
+            )}
+          </View>
+
         </ScrollView>
       </SafeAreaView>
 
-      {/* FOOTER NAV (Igual que antes) */}
-   {/* FOOTER NAV CORREGIDO */}
-      <View 
-        className="absolute bottom-0 w-full bg-white border-t border-slate-100 flex-row items-center" 
-        style={{ 
-            paddingBottom: Math.max(insets.bottom, 20), 
-            paddingTop: 12,
-            flexDirection: 'row',       // Forzamos la fila horizontal
-            justifyContent: 'space-around' // Distribuimos el espacio
-        }}
-      >
-        
-        {/* Botón Inicio */}
-        <Pressable className="items-center justify-center min-w-[64px]">
-          <View className="bg-blue-50 px-5 py-1.5 rounded-full mb-1.5">
-            <TrendingUp size={24} color="#2563EB" strokeWidth={2.5} />
-          </View>
-          <Text className="text-[10px] text-blue-600 font-bold">Inicio</Text>
+      {/* FOOTER */}
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+        <Pressable style={styles.navItem}>
+          <View style={styles.navIconActive}><TrendingUp size={24} color={COLORS.primary} strokeWidth={2.5} /></View>
+          <Text style={styles.navTextActive}>Inicio</Text>
         </Pressable>
-
-        {/* Botón Datos */}
-        <Pressable onPress={() => navigation.navigate('Stats')} className="items-center justify-center min-w-[64px] opacity-60 active:opacity-100">
-          <View className="px-5 py-1.5 mb-1.5">
-            <BarChart3 size={24} color="#64748b" strokeWidth={2.5} />
-          </View>
-          <Text className="text-[10px] text-slate-500 font-medium">Datos</Text>
+        <Pressable onPress={() => navigation.navigate('Stats')} style={styles.navItemInactive}>
+          <BarChart3 size={24} color={COLORS.textMuted} strokeWidth={2.5} /><Text style={styles.navTextInactive}>Datos</Text>
         </Pressable>
-
-        {/* Botón Pruebas */}
-        <Pressable onPress={() => navigation.navigate('MisPruebas')} className="items-center justify-center min-w-[64px] opacity-60 active:opacity-100">
-          <View className="px-5 py-1.5 mb-1.5">
-            <ClipboardList size={24} color="#64748b" strokeWidth={2.5} />
-          </View>
-          <Text className="text-[10px] text-slate-500 font-medium">Pruebas</Text>
+        <Pressable onPress={() => navigation.navigate('MisPruebas')} style={styles.navItemInactive}>
+          <ClipboardList size={24} color={COLORS.textMuted} strokeWidth={2.5} /><Text style={styles.navTextInactive}>Historial</Text>
         </Pressable>
-
-        {/* Botón Perfil */}
-        <Pressable onPress={() => navigation.navigate('Profile')} className="items-center justify-center min-w-[64px] opacity-60 active:opacity-100">
-          <View className="px-5 py-1.5 mb-1.5">
-            <User size={24} color="#64748b" strokeWidth={2.5} />
-          </View>
-          <Text className="text-[10px] text-slate-500 font-medium">Perfil</Text>
+        <Pressable onPress={() => navigation.navigate('Profile')} style={styles.navItemInactive}>
+          <User size={24} color={COLORS.textMuted} strokeWidth={2.5} /><Text style={styles.navTextInactive}>Perfil</Text>
         </Pressable>
-
       </View>
-
     </View>
   );
 }
+
+// --- ESTILOS ---
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+  safeArea: { flex: 1 },
+  scrollContent: { paddingBottom: 100, paddingHorizontal: 24 },
+
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, paddingVertical: 16, marginTop: 8 },
+  headerSubtitle: { fontSize: 14, fontWeight: "600", color: COLORS.textMuted },
+  headerTitle: { fontSize: 24, fontWeight: "800", color: COLORS.textDark, letterSpacing: -0.5 },
+  headerIcons: { flexDirection: "row", gap: 12 },
+  iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.white, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: COLORS.borderColor },
+  profileButton: { backgroundColor: COLORS.primaryLight, borderColor: "#bfdbfe" },
+
+  sectionContainer: { marginTop: 24 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { fontSize: 20, fontWeight: "800", color: COLORS.textDark, marginBottom: 12 },
+  joinButtonSmall: { flexDirection: 'row', backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, alignItems: 'center', gap: 4 },
+  joinButtonText: { color: 'white', fontSize: 12, fontWeight: '700' },
+
+  pendingCard: { backgroundColor: COLORS.white, padding: 16, borderRadius: 20, marginBottom: 12, borderLeftWidth: 4, borderLeftColor: COLORS.warning, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  pendingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  pendingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.warningBg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, gap: 4 },
+  pendingBadgeText: { color: '#c2410c', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  pendingDate: { fontSize: 12, color: COLORS.textMuted, fontWeight: '500' },
+  pendingTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark },
+  pendingSubtitle: { fontSize: 14, color: COLORS.textMuted, marginTop: 2 },
+  emptyPendingBox: { backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: 16, padding: 20, alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: COLORS.borderColor },
+
+  groupsScroll: { paddingBottom: 8 },
+  groupCard: { width: 150, backgroundColor: COLORS.white, padding: 16, borderRadius: 20, marginRight: 12, borderWidth: 1, borderColor: COLORS.borderColor, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  groupIconBg: { width: 40, height: 40, backgroundColor: COLORS.primaryLight, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  groupName: { fontSize: 16, fontWeight: '700', color: COLORS.textDark, marginBottom: 4 },
+  groupDesc: { fontSize: 12, color: COLORS.textMuted },
+  emptyStateBox: { backgroundColor: COLORS.white, borderRadius: 16, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor, borderStyle: 'dashed' },
+  emptyStateText: { color: COLORS.textMuted, fontSize: 14 },
+
+  resultCard: { backgroundColor: COLORS.white, borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: COLORS.borderColor, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+  resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  resultInfo: { flex: 1 },
+  testName: { fontSize: 16, fontWeight: '700', color: COLORS.textDark, marginBottom: 2 },
+  testDate: { fontSize: 12, color: COLORS.textMuted },
+  badgeValue: { flexDirection: 'row', backgroundColor: COLORS.primaryLight, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, alignItems: 'center' },
+  badgeText: { color: COLORS.primary, fontWeight: '700', fontSize: 12 },
+  feedbackContainer: { flexDirection: 'row', backgroundColor: "#f1f5f9", padding: 12, borderRadius: 12, gap: 8 },
+  feedbackText: { flex: 1, fontSize: 13, color: COLORS.textDark, fontStyle: 'italic', lineHeight: 18 },
+  emptyResultsContainer: { alignItems: 'center', padding: 32, opacity: 0.7 },
+  emptyResultsTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textMuted, marginTop: 12 },
+  emptyResultsDesc: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', marginTop: 4 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: COLORS.white, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontSize: 24, fontWeight: 'bold', color: COLORS.textDark },
+  closeButton: { padding: 8, backgroundColor: COLORS.background, borderRadius: 20 },
+  profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background, padding: 16, borderRadius: 24, marginBottom: 24, borderWidth: 1, borderColor: COLORS.borderColor },
+  profileIconContainer: { width: 56, height: 56, backgroundColor: COLORS.primaryLight, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginRight: 16, borderWidth: 2, borderColor: COLORS.white },
+  profileName: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark },
+  profileEmail: { fontSize: 14, color: COLORS.textMuted },
+  logoutButton: { flexDirection: 'row', backgroundColor: '#fef2f2', padding: 16, borderRadius: 16, justifyContent: 'center', alignItems: 'center', gap: 8 },
+  logoutText: { color: '#dc2626', fontWeight: 'bold', fontSize: 16 },
+
+  modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject },
+  modalContentCenter: { width: '100%', backgroundColor: COLORS.white, borderRadius: 24, padding: 24, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
+  modalTitleCenter: { fontSize: 22, fontWeight: '800', color: COLORS.textDark, textAlign: 'center', marginBottom: 8 },
+  modalSubtitleCenter: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', marginBottom: 24 },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 16, paddingHorizontal: 16, height: 56, marginBottom: 24 },
+  textInput: { flex: 1, fontSize: 16, color: COLORS.textDark },
+  modalActions: { flexDirection: 'row', gap: 12 },
+  btnCancel: { flex: 1, height: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 12, backgroundColor: COLORS.background },
+  btnCancelText: { color: COLORS.textMuted, fontWeight: '600' },
+  btnConfirm: { flex: 1, height: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 12, backgroundColor: COLORS.primary },
+  btnConfirmText: { color: 'white', fontWeight: 'bold' },
+
+  footer: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.borderColor, flexDirection: 'row', justifyContent: 'space-around', paddingTop: 12 },
+  navItem: { alignItems: 'center', justifyContent: 'center', minWidth: 64 },
+  navItemInactive: { alignItems: 'center', justifyContent: 'center', minWidth: 64, opacity: 0.6 },
+  navIconActive: { backgroundColor: COLORS.primaryLight, paddingHorizontal: 20, paddingVertical: 6, borderRadius: 20, marginBottom: 4 },
+  navTextActive: { fontSize: 10, color: COLORS.primary, fontWeight: 'bold' },
+  navTextInactive: { fontSize: 10, color: COLORS.textMuted, fontWeight: '500', marginTop: 4 },
+});
