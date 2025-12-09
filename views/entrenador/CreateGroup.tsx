@@ -8,17 +8,17 @@ import {
   KeyboardAvoidingView, 
   Platform,
   Alert,
-  StatusBar
+  StatusBar,
+  StyleSheet,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { 
   ArrowLeft, 
   Users, 
-  Search, 
-  Check, 
-  Palette, 
-  UserPlus 
+  AlignLeft,
+  Type
 } from "lucide-react-native";
 import { EntrenadorStackParamList } from "../../navigation/types";
 import { supabase } from "./../../lib/supabase"; 
@@ -26,29 +26,28 @@ import { useAuth } from "./../../context/AuthContext";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "CreateGroup">;
 
-
-
-const availableAthletes = [
-  { id: 1, name: 'Alex Johnson', age: 24, level: 'Avanzado', avatar: '👨‍🦱' },
-  { id: 2, name: 'Maria García', age: 28, level: 'Intermedio', avatar: '👩‍🦰' },
-  { id: 3, name: 'David Lee', age: 22, level: 'Principiante', avatar: '🧑' },
-  { id: 4, name: 'Sarah Miller', age: 26, level: 'Avanzado', avatar: '👩‍🦱' },
-  { id: 5, name: 'John Smith', age: 30, level: 'Intermedio', avatar: '🧔' },
-];
-
-const groupColors = [
-  { name: 'Azul', value: '#2563EB', bg: 'bg-blue-600' },
-  { name: 'Verde', value: '#059669', bg: 'bg-emerald-600' },
-  { name: 'Violeta', value: '#7C3AED', bg: 'bg-violet-600' },
-  { name: 'Rosa', value: '#DB2777', bg: 'bg-pink-600' },
-  { name: 'Naranja', value: '#EA580C', bg: 'bg-orange-600' },
-  { name: 'Rojo', value: '#DC2626', bg: 'bg-red-600' },
-];
+// --- CONSTANTES DE DISEÑO ---
+const COLORS = {
+  primary: "#2563EB",     // Azul vibrante
+  background: "#F8FAFC",  // Gris muy claro (Slate 50)
+  cardBg: "#FFFFFF",
+  textDark: "#0F172A",    // Slate 900
+  textMuted: "#64748B",   // Slate 500
+  borderColor: "#E2E8F0", // Slate 200
+  inputBg: "#F1F5F9",     // Slate 100
+  shadow: "#000000",
+  disabled: "#CBD5E1"     // Slate 300
+};
 
 export default function CreateGroup({ navigation }: Props) {
   const { user } = useAuth(); 
-  const [loading, setLoading] = useState(false);
+  const insets = useSafeAreaInsets();
   
+  const [loading, setLoading] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [groupDescription, setGroupDescription] = useState('');
+
+  // --- LÓGICA DE NEGOCIO ---
 
   const generarCodigoGrupo = () => {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -58,7 +57,6 @@ export default function CreateGroup({ navigation }: Props) {
     }
     return result;
   };
-
 
   const verificarCodigoGrupo = async () => {
     let isUnique = false;
@@ -75,7 +73,6 @@ export default function CreateGroup({ navigation }: Props) {
     }
     return codigoNuevo;
   };
-
 
   const handleCreateGroup = async () => {
     if (!groupName.trim()) {
@@ -95,6 +92,7 @@ export default function CreateGroup({ navigation }: Props) {
       if (trainerError || !trainerData) throw new Error("No se encontró información del entrenador");
       const trainerId = trainerData.no_documento;
 
+      // Verificar duplicados de nombre
       const { data: existingGroup } = await supabase
         .from('grupo')
         .select('codigo')
@@ -108,10 +106,10 @@ export default function CreateGroup({ navigation }: Props) {
         return;
       }
 
-      //  Generar Código Único
+      // Generar Código
       const uniqueCode = await verificarCodigoGrupo();
 
-      // Insertar el Grupo
+      // Insertar
       const { error: insertError } = await supabase
         .from('grupo')
         .insert({
@@ -125,7 +123,7 @@ export default function CreateGroup({ navigation }: Props) {
       if (insertError) throw insertError;
 
       Alert.alert("¡Grupo Creado!", `Código: ${uniqueCode}\nEl grupo "${groupName}" está listo.`, [
-        { text: "Ok", onPress: () => navigation.navigate('MyGroups') } // O navigation.goBack()
+        { text: "Ir a Mis Grupos", onPress: () => navigation.navigate('MyGroups') }
       ]);
 
     } catch (error: any) {
@@ -135,242 +133,121 @@ export default function CreateGroup({ navigation }: Props) {
       setLoading(false);
     }
   };
-  const insets = useSafeAreaInsets();
-  const [groupName, setGroupName] = useState('');
-  const [groupDescription, setGroupDescription] = useState('');
-  const [selectedColor, setSelectedColor] = useState(groupColors[0]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedAthletes, setSelectedAthletes] = useState<number[]>([]);
-
-  const filteredAthletes = availableAthletes.filter(athlete =>
-    athlete.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    athlete.level.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const toggleAthlete = (athleteId: number) => {
-    if (selectedAthletes.includes(athleteId)) {
-      setSelectedAthletes(selectedAthletes.filter(id => id !== athleteId));
-    } else {
-      setSelectedAthletes([...selectedAthletes, athleteId]);
-    }
-  };
 
   const isFormValid = groupName.trim().length > 0;
 
   return (
-    <View className="flex-1 bg-slate-50">
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
-       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
+          style={styles.keyboardContainer}
         >
           
           {/* --- HEADER --- */}
-          <View className="px-6 pt-4 pb-4 bg-slate-50 z-10">
-            <View className="flex-row items-center mb-2">
+          <View style={styles.header}>
+            <View style={styles.headerRow}>
               <Pressable 
                 onPress={() => navigation.goBack()} 
-                className="w-12 h-12 bg-white rounded-full items-center justify-center shadow-sm border border-slate-200 mr-4 active:bg-slate-50"
+                style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
               >
-                <ArrowLeft size={22} color="#334155" />
+                <ArrowLeft size={22} color={COLORS.textDark} />
               </Pressable>
               <View>
-                <Text className="text-slate-900 text-2xl font-extrabold tracking-tight">Crear Grupo</Text>
-                <Text className="text-slate-500 text-sm font-medium">Organiza a tus atletas</Text>
+                <Text style={styles.headerTitle}>Crear Grupo</Text>
+                <Text style={styles.headerSubtitle}>Organiza a tus atletas</Text>
               </View>
             </View>
           </View>
 
+          {/* --- CONTENT --- */}
           <ScrollView 
-            className="flex-1 px-6"
-            contentContainerStyle={{ paddingBottom: 150 }}
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
             
-            {/* CONTENEDOR PRINCIPAL: Espaciado vertical amplio entre secciones */}
-            <View className="space-y-8">
-
-              {/* 1. TARJETA DETALLES */}
-              <View className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100">
-                
-                {/* Título de Sección */}
-                <View className="flex-row items-center mb-8 space-x-3 border-b border-slate-50 pb-4">
-                  <View className="bg-blue-50 p-2.5 rounded-xl">
-                    <Users size={22} color="#2563EB" />
-                  </View>
-                  <View>
-                    <Text className="text-slate-900 font-bold text-lg">Detalles Básicos</Text>
-                    <Text className="text-slate-400 text-xs font-medium">Información general</Text>
-                  </View>
+            {/* TARJETA DETALLES */}
+            <View style={styles.card}>
+              
+              {/* Título de Tarjeta */}
+              <View style={styles.cardHeader}>
+                <View style={styles.iconContainer}>
+                  <Users size={22} color={COLORS.primary} />
                 </View>
-
-                <View className="space-y-6">
-                  {/* Nombre */}
-                  <View>
-                    <Text className="text-slate-700 font-bold text-sm ml-1 mb-3">Nombre del Grupo</Text>
-                    <View className="bg-slate-50 border border-slate-200 rounded-2xl h-14 justify-center px-4 focus:border-blue-500">
-                      <TextInput
-                        placeholder="Ej: Fuerza Avanzada"
-                        value={groupName}
-                        onChangeText={setGroupName}
-                        className="text-slate-900 text-base font-semibold"
-                        placeholderTextColor="#94a3b8"
-                      />
-                    </View>
-                  </View>
-
-                  {/* Descripción */}
-                  <View>
-                    <Text className="text-slate-700 font-bold text-sm ml-1 mb-3">Descripción (Opcional)</Text>
-                    <View className="bg-slate-50 border border-slate-200 rounded-2xl p-4 h-32 focus:border-blue-500">
-                      <TextInput
-                        placeholder="Objetivos del grupo, horarios, notas..."
-                        value={groupDescription}
-                        onChangeText={setGroupDescription}
-                        multiline
-                        textAlignVertical="top"
-                        className="text-slate-900 text-base font-medium h-full leading-5"
-                        placeholderTextColor="#94a3b8"
-                      />
-                    </View>
-                  </View>
-
-                  {/*
-                  <View className="pt-2">
-                    <View className="flex-row items-center space-x-2 mb-4">
-                       <Palette size={16} color="#64748b" />
-                       <Text className="text-slate-700 font-bold text-sm">Etiqueta de Color</Text>
-                    </View>
-                    
-                    {/* Grid de colores con más espacio 
-                    <View className="flex-row flex-wrap gap-4">
-                      {groupColors.map((color) => {
-                         const isSelected = selectedColor.value === color.value;
-                         return (
-                          <Pressable
-                            key={color.value}
-                            onPress={() => setSelectedColor(color)}
-                            className={`w-12 h-12 rounded-full items-center justify-center ${color.bg} ${
-                              isSelected ? 'ring-4 ring-offset-2 ring-slate-200 shadow-md scale-105' : 'opacity-80'
-                            }`}
-                            style={isSelected ? { borderWidth: 3, borderColor: 'white' } : {}}
-                          >
-                            {isSelected && <Check size={20} color="white" strokeWidth={3} />}
-                          </Pressable>
-                         );
-                      })}
-                    </View>
-                  </View> */}
+                <View>
+                  <Text style={styles.cardTitle}>Detalles Básicos</Text>
+                  <Text style={styles.cardSubtitle}>Información general del equipo</Text>
                 </View>
               </View>
 
-              {/*
-              <View className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100">
-                <View className="flex-row items-center justify-between mb-6 border-b border-slate-50 pb-4">
-                  <View className="flex-row items-center space-x-3">
-                      <View className="bg-slate-100 p-2.5 rounded-xl">
-                          <UserPlus size={22} color="#475569" />
-                      </View>
-                      <View>
-                          <Text className="text-slate-900 font-bold text-lg">Miembros</Text>
-                          <Text className="text-slate-400 text-xs font-medium">Selecciona integrantes</Text>
-                      </View>
-                  </View>
-                  
-                  {/* Contador 
-                  {selectedAthletes.length > 0 && (
-                    <View 
-                      className="px-3 py-1.5 rounded-full items-center justify-center shadow-sm"
-                      style={{ backgroundColor: selectedColor.value }}
-                    >
-                      <Text className="text-white font-bold text-xs">{selectedAthletes.length} Añadidos</Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Buscador *
-                <View className="relative mb-6">
-                  <View className="absolute left-4 top-3.5 z-10">
-                    <Search size={20} color="#9CA3AF" />
-                  </View>
-                  <TextInput
-                    placeholder="Buscar por nombre..."
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    className="bg-slate-50 border border-slate-200 rounded-2xl h-12 pl-12 pr-4 text-base text-slate-900 font-medium"
-                    placeholderTextColor="#94a3b8"
-                  />
-                </View>
-
-                {/* Lista de Atletas 
-                <View className="space-y-3">
-                  {filteredAthletes.length > 0 ? (
-                    filteredAthletes.map((athlete) => {
-                      const isSelected = selectedAthletes.includes(athlete.id);
-                      return (
-                        <Pressable
-                          key={athlete.id}
-                          onPress={() => toggleAthlete(athlete.id)}
-                          className={`flex-row items-center p-4 rounded-2xl border transition-all active:scale-[0.98] ${
-                            isSelected 
-                              ? 'bg-blue-50/60 border-blue-200 shadow-sm' 
-                              : 'bg-white border-slate-100'
-                          }`}
-                        >
-                          <View className="bg-slate-50 w-12 h-12 rounded-full items-center justify-center mr-4 border border-slate-200">
-                              <Text className="text-xl">{athlete.avatar}</Text>
-                          </View>
-                          
-                          <View className="flex-1">
-                            <Text className={`font-bold text-base mb-0.5 ${isSelected ? 'text-blue-900' : 'text-slate-900'}`}>
-                              {athlete.name}
-                            </Text>
-                            <Text className="text-xs text-slate-500 font-medium">{athlete.level}</Text>
-                          </View>
-
-                          <View className={`w-7 h-7 rounded-full border items-center justify-center ${
-                            isSelected 
-                              ? 'bg-blue-600 border-blue-600 shadow-sm' 
-                              : 'border-slate-300 bg-white'
-                          }`}>
-                            {isSelected && <Check size={14} color="white" strokeWidth={4} />}
-                          </View>
-                        </Pressable>
-                      );
-                    })
-                  ) : (
-                    <View className="items-center py-8">
-                      <Text className="text-slate-400 font-medium text-sm">No se encontraron atletas</Text>
-                    </View>
-                  )}
-                </View>
+              <View style={styles.formContainer}>
                 
-              </View>
-              */}
+                {/* Input: Nombre */}
+                <View style={styles.inputGroup}>
+                  <View style={styles.labelRow}>
+                    <Type size={14} color={COLORS.textMuted} style={{ marginRight: 6 }} />
+                    <Text style={styles.label}>Nombre del Grupo</Text>
+                  </View>
+                  <View style={styles.inputWrapper}>
+                    <TextInput
+                      placeholder="Ej: Fuerza Avanzada"
+                      value={groupName}
+                      onChangeText={setGroupName}
+                      style={styles.input}
+                      placeholderTextColor="#94A3B8"
+                      autoCapitalize="words"
+                    />
+                  </View>
+                </View>
 
+                {/* Input: Descripción */}
+                <View style={styles.inputGroup}>
+                  <View style={styles.labelRow}>
+                    <AlignLeft size={14} color={COLORS.textMuted} style={{ marginRight: 6 }} />
+                    <Text style={styles.label}>Descripción (Opcional)</Text>
+                  </View>
+                  <View style={[styles.inputWrapper, styles.textAreaWrapper]}>
+                    <TextInput
+                      placeholder="Objetivos, horarios, notas..."
+                      value={groupDescription}
+                      onChangeText={setGroupDescription}
+                      multiline
+                      textAlignVertical="top"
+                      style={[styles.input, styles.textArea]}
+                      placeholderTextColor="#94A3B8"
+                    />
+                  </View>
+                </View>
+
+              </View>
             </View>
+
           </ScrollView>
 
           {/* --- FOOTER FIXED --- */}
-          <View 
-            className="absolute bottom-0 w-full bg-white border-t border-slate-100 px-6 pt-4 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]"
-            style={{ paddingBottom: Math.max(insets.bottom, 24) }}
-          >
+          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 24) }]}>
             <Pressable
               onPress={handleCreateGroup}
-              disabled={!isFormValid}
-              className={`w-full h-14 rounded-2xl flex-row items-center justify-center shadow-lg transition-all active:scale-[0.98] ${
-                isFormValid 
-                  ? 'bg-blue-600 shadow-blue-600/30' 
-                  : 'bg-slate-200 shadow-none opacity-80'
-              }`}
+              disabled={!isFormValid || loading}
+              style={({ pressed }) => [
+                styles.createButton, 
+                (!isFormValid || loading) ? styles.createButtonDisabled : styles.createButtonActive,
+                pressed && isFormValid && styles.createButtonPressed
+              ]}
             >
-              <Users size={20} color={isFormValid ? "white" : "#94a3b8"} style={{ marginRight: 8 }} />
-              <Text className={`font-bold text-lg tracking-wide ${isFormValid ? 'text-white' : 'text-slate-500'}`}>
-                Crear Grupo
-              </Text>
+              {loading ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <>
+                  <Users size={20} color={isFormValid ? "white" : "#94A3B8"} style={{ marginRight: 10 }} />
+                  <Text style={[styles.createButtonText, !isFormValid && styles.createButtonTextDisabled]}>
+                    Crear Grupo
+                  </Text>
+                </>
+              )}
             </Pressable>
           </View>
 
@@ -379,3 +256,205 @@ export default function CreateGroup({ navigation }: Props) {
     </View>
   );
 }
+
+// --- ESTILOS STRICTOS ---
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  safeArea: {
+    flex: 1,
+  },
+  keyboardContainer: {
+    flex: 1,
+  },
+  
+  // Header
+  header: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 16,
+    backgroundColor: COLORS.background,
+    zIndex: 10,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backButton: {
+    width: 48,
+    height: 48,
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  backButtonPressed: {
+    backgroundColor: '#F1F5F9',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.textDark,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.textMuted,
+  },
+
+  // Scroll Content
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 150, // Espacio para el footer
+  },
+  
+  // Card
+  card: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 24,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
+  },
+  iconContainer: {
+    backgroundColor: '#EFF6FF', // Blue 50
+    padding: 10,
+    borderRadius: 12,
+    marginRight: 12,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textDark,
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.textMuted,
+  },
+
+  // Form Inputs
+  formContainer: {
+    gap: 20,
+  },
+  inputGroup: {
+    marginBottom: 4,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingLeft: 4,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#475569', // Slate 600
+  },
+  inputWrapper: {
+    backgroundColor: COLORS.inputBg,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    borderRadius: 16,
+    height: 56,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  input: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textDark,
+    height: '100%',
+  },
+  textAreaWrapper: {
+    height: 140,
+    paddingVertical: 16,
+    justifyContent: 'flex-start',
+  },
+  textArea: {
+    height: '100%',
+    lineHeight: 22,
+  },
+
+  // Footer
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.cardBg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderColor,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  createButton: {
+    width: '100%',
+    height: 56,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  createButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  createButtonDisabled: {
+    backgroundColor: COLORS.inputBg,
+    shadowOpacity: 0,
+    elevation: 0,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+  },
+  createButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  createButtonText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: 'white',
+    letterSpacing: 0.5,
+  },
+  createButtonTextDisabled: {
+    color: '#94A3B8', // Slate 400
+  },
+});

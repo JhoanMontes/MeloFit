@@ -1,621 +1,494 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  StatusBar,
-  Modal,
-  Dimensions,
-  StyleSheet,
-  Platform
+    View,
+    Text,
+    StyleSheet,
+    FlatList,
+    Pressable,
+    TextInput,
+    ActivityIndicator,
+    StatusBar
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { LineChart, PieChart } from "react-native-gifted-charts";
-import {
-  ArrowLeft,
-  Search,
-  ChevronRight,
-  Clock,
-  CheckCircle2
+import { 
+    ChevronLeft, 
+    Search, 
+    Calendar, 
+    CheckCircle2, 
+    Users,
+    AlertCircle
 } from "lucide-react-native";
-import { EntrenadorStackParamList } from "../../navigation/types";
+
+import { useAuth } from "../../context/AuthContext"; 
+import { EntrenadorStackParamList } from "../../navigation/types"; 
+import { supabase } from "../../lib/supabase"; 
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "AssignmentsOverview">;
 
-const { width } = Dimensions.get('window');
-
-// --- MOCK DATA ---
-const groupsData = [
-  {
-    id: 1, name: "Fuerza Avanzada", trend: [{ value: 60 }, { value: 80 }, { value: 75 }, { value: 90 }],
-    color: '#4F46E5', avg: 86, activeTests: 3
-  },
-  {
-    id: 2, name: "Velocidad Elite", trend: [{ value: 50 }, { value: 55 }, { value: 65 }, { value: 70 }],
-    color: '#059669', avg: 72, activeTests: 1
-  },
-  {
-    id: 3, name: "Principiantes", trend: [{ value: 40 }, { value: 30 }, { value: 45 }, { value: 35 }],
-    color: '#EA580C', avg: 45, activeTests: 5
-  },
-];
-
-const assignmentsList = [
-  { id: 1, title: "Sentadilla Max (1RM)", group: "Fuerza Avanzada", deadline: "Hoy", completed: 8, total: 10, color: '#4F46E5' },
-  { id: 2, title: "Test de Cooper", group: "Principiantes", deadline: "Mañana", completed: 3, total: 15, color: '#EA580C' },
-  { id: 3, title: "100m Planos", group: "Velocidad Elite", deadline: "Ayer", completed: 8, total: 8, color: '#059669' },
-  { id: 4, title: "Flexibilidad", group: "Principiantes", deadline: "3 días", completed: 0, total: 15, color: '#EA580C' },
-  { id: 5, title: "Press Banca", group: "Fuerza Avanzada", deadline: "Semana pasada", completed: 10, total: 10, color: '#4F46E5' },
-];
+// --- CONSTANTES ---
+const COLORS = {
+    primary: "#2563eb",
+    primaryLight: "#eff6ff",
+    background: "#f8fafc",
+    white: "#ffffff",
+    textDark: "#0f172a",
+    textMuted: "#64748b",
+    borderColor: "#e2e8f0",
+    success: "#22c55e",
+    danger: "#ef4444",
+};
 
 export default function AssignmentsOverview({ navigation }: Props) {
-  const [selectedFilter, setSelectedFilter] = useState("Todos");
-  const [selectedGroup, setSelectedGroup] = useState<any>(null);
+    const { user } = useAuth();
+    
+    // Estados
+    const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
+    const [loading, setLoading] = useState(true);
+    const [assignments, setAssignments] = useState<any[]>([]);
+    const [searchQuery, setSearchQuery] = useState("");
 
-  const filters = ["Todos", "Pendientes", "Completados"];
+    // Cargar Datos
+    useFocusEffect(
+        useCallback(() => {
+            let isActive = true;
+            fetchAssignments(isActive);
+            return () => { isActive = false };
+        }, [user, activeTab])
+    );
 
-  const filteredAssignments = assignmentsList.filter(item => {
-    if (selectedFilter === "Todos") return true;
-    if (selectedFilter === "Completados") return item.completed === item.total;
-    if (selectedFilter === "Pendientes") return item.completed < item.total;
-    return true;
-  });
+    const fetchAssignments = async (isActiveComponent: boolean) => {
+        setLoading(true);
+        try {
+            const { data: trainer } = await supabase.from("usuario").select("no_documento").eq("auth_id", user?.id).single();
+            if (!trainer) return;
 
-  // --- MODAL DETALLE ---
-  const GroupDetailModal = () => (
-    <Modal
-      visible={!!selectedGroup}
-      transparent
-      animationType="slide"
-      onRequestClose={() => setSelectedGroup(null)}
-    >
-      <View style={styles.modalOverlay}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setSelectedGroup(null)} />
-        
-        <View style={styles.modalContent}>
-          <View style={styles.modalHandleContainer}>
-            <View style={styles.modalHandle} />
-          </View>
+            const { data: myGroups } = await supabase.from("grupo").select("codigo, nombre").eq("entrenador_no_documento", trainer.no_documento);
+            if (!myGroups || myGroups.length === 0) {
+                setAssignments([]);
+                setLoading(false);
+                return;
+            }
 
-          {selectedGroup && (
-            <>
-              <View style={styles.modalHeader}>
-                <View>
-                  <Text style={styles.modalSubtitle}>Reporte Rápido</Text>
-                  <Text style={styles.modalTitle}>{selectedGroup.name}</Text>
-                </View>
-                <View style={styles.modalBadge}>
-                  <Text style={styles.modalBadgeText}>{selectedGroup.avg}</Text>
-                  <Text style={styles.modalBadgeLabel}>Promedio</Text>
-                </View>
-              </View>
+            const groupCodes = myGroups.map(g => g.codigo);
+            const groupMap: Record<string, string> = {};
+            myGroups.forEach(g => groupMap[g.codigo] = g.nombre);
 
-              {/* GRÁFICO GRANDE EN MODAL */}
-              <View style={styles.chartContainerLarge}>
-                <LineChart
-                  data={selectedGroup.trend.map((t: any) => ({ value: Number(t.value) }))}
-                  color={selectedGroup.color}
-                  thickness={4}
-                  curved
-                  hideRules
-                  hideYAxisText
-                  hideAxesAndRules
-                  height={120}
-                  width={width - 80}
-                  startFillColor={selectedGroup.color}
-                  endFillColor="rgba(255,255,255,0.01)"
-                  startOpacity={0.2}
-                  endOpacity={0.01}
-                  areaChart
-                  // Configuración de puntero para minimizar interacciones visuales
-                  pointerConfig={{ 
-                    pointerStripHeight: 0, 
-                    pointerStripWidth: 0,
-                    radius: 0,
-                    hidePointer1: true 
-                  }}
-                  hideDataPoints
-                />
-              </View>
+            const nowISO = new Date().toISOString();
+            
+            // Query Base: Partimos de la tabla intermedia que tiene grupo_codigo
+            let query = supabase
+                .from("prueba_asignada_has_atleta")
+                .select(`
+                    grupo_codigo,
+                    prueba_asignada!inner (
+                        id, 
+                        fecha_asignacion, 
+                        fecha_limite, 
+                        prueba ( nombre )
+                    )
+                `)
+                .in("grupo_codigo", groupCodes);
 
-              <Pressable
-                onPress={() => setSelectedGroup(null)}
-                style={({ pressed }) => [
-                  styles.closeButton,
-                  pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }
-                ]}
-              >
-                <Text style={styles.closeButtonText}>Cerrar Reporte</Text>
-              </Pressable>
-            </>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
+            // Filtro por fecha usando !inner
+            if (activeTab === 'active') {
+                query = query.gte("prueba_asignada.fecha_limite", nowISO);
+            } else {
+                query = query.lt("prueba_asignada.fecha_limite", nowISO);
+            }
 
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <GroupDetailModal />
+            const { data: rawData, error } = await query;
 
-      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+            if (error) throw error;
 
-        {/* HEADER */}
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-          >
-            <ArrowLeft size={20} color="#1e293b" />
-          </Pressable>
-          <Text style={styles.headerTitle}>Gestión de Pruebas</Text>
-          <Pressable style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}>
-            <Search size={20} color="#1e293b" />
-          </Pressable>
-        </View>
+            if (rawData && isActiveComponent) {
+                // 1. Desduplicar (Una fila por asignación, no por atleta)
+                const uniqueMap = new Map();
+                rawData.forEach((item: any) => {
+                    const key = `${item.prueba_asignada.id}-${item.grupo_codigo}`;
+                    if (!uniqueMap.has(key)) uniqueMap.set(key, item);
+                });
+                const uniqueItems = Array.from(uniqueMap.values());
 
-        <ScrollView
-          style={{ flex: 1 }}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }}
-        >
+                // 2. Enriquecer con conteos
+                const enriched = await Promise.all(uniqueItems.map(async (item: any) => {
+                     const p = item.prueba_asignada;
+                     
+                     const { count: total } = await supabase.from("prueba_asignada_has_atleta")
+                        .select("*", { count: "exact", head: true }).eq("prueba_asignada_id", p.id);
+                     
+                     const { count: completed } = await supabase.from("resultado_prueba")
+                        .select("*", { count: "exact", head: true }).eq("prueba_asignada_id", p.id);
 
-          {/* 1. SECCIÓN DE INSIGHTS (CARRUSEL) */}
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Rendimiento por Grupo</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 24 }}
-            >
-              {groupsData.map((group) => (
-                <Pressable
-                  key={group.id}
-                  onPress={() => setSelectedGroup(group)}
-                  style={({ pressed }) => [
-                    styles.cardGroup,
-                    pressed && { transform: [{ scale: 0.96 }] }
-                  ]}
-                >
-                  <View>
-                    <Text style={styles.cardGroupTitle} numberOfLines={2}>{group.name}</Text>
-                    <Text style={styles.cardGroupSubtitle}>{group.activeTests} pruebas activas</Text>
-                  </View>
+                     return {
+                         id: p.id,
+                         fecha_asignacion: p.fecha_asignacion,
+                         fecha_limite: p.fecha_limite,
+                         testName: p.prueba?.nombre,
+                         groupName: groupMap[item.grupo_codigo],
+                         total: total || 0,
+                         completed: completed || 0,
+                         progress: (total && total > 0) ? Math.round(((completed || 0) / total) * 100) : 0
+                     };
+                }));
 
-                  {/* MINI GRÁFICO:
-                      pointerEvents="none" es la clave aquí. Bloquea cualquier intento 
-                      de interacción táctil, evitando el crash y haciendo que el toque 
-                      pase directo al Pressable padre (abrir modal).
-                  */}
-                  <View style={styles.miniChartContainer} pointerEvents="none">
-                    <LineChart
-                      data={group.trend.map((t: any) => ({ value: Number(t.value) }))}
-                      color={group.color}
-                      thickness={2}
-                      curved
-                      hideRules
-                      hideAxesAndRules
-                      height={60}
-                      width={140}
-                      initialSpacing={10}
-                      yAxisOffset={0}
-                      adjustToWidth={false}
-                      isAnimated={false} // Desactivar animación en miniaturas mejora rendimiento
-                      hideDataPoints // Ocultar puntos para vista más limpia
-                    />
-                  </View>
+                // Ordenar
+                if (activeTab === 'active') {
+                    // Más urgentes primero
+                    enriched.sort((a, b) => new Date(a.fecha_limite).getTime() - new Date(b.fecha_limite).getTime());
+                } else {
+                    // Más recientes primero
+                    enriched.sort((a, b) => new Date(b.fecha_limite).getTime() - new Date(a.fecha_limite).getTime());
+                }
 
-                  <View style={styles.cardFooter}>
-                    <View style={styles.badgeSmall}>
-                      <Text style={styles.badgeSmallText}>{group.avg}%</Text>
-                    </View>
-                    <View style={styles.chevronContainer}>
-                      <ChevronRight size={12} color="#94a3b8" />
-                    </View>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
+                setAssignments(enriched);
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            if (isActiveComponent) setLoading(false);
+        }
+    };
 
-          {/* 2. FILTROS (CHIPS) */}
-          <View style={styles.filtersContainer}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 24 }}
-            >
-              {filters.map((filtro) => {
-                const isActive = selectedFilter === filtro;
-                return (
-                  <Pressable
-                    key={filtro}
-                    onPress={() => setSelectedFilter(filtro)}
-                    style={[
-                      styles.filterChip,
-                      isActive ? styles.filterChipActive : styles.filterChipInactive
-                    ]}
-                  >
-                    <Text style={[
-                      styles.filterText,
-                      isActive ? styles.filterTextActive : styles.filterTextInactive
-                    ]}>
-                      {filtro}
-                    </Text>
-                  </Pressable>
-                )
-              })}
-            </ScrollView>
-          </View>
+    // Filtro local
+    const filteredData = assignments.filter(item => 
+        (item.testName?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+        (item.groupName?.toLowerCase() || "").includes(searchQuery.toLowerCase())
+    );
 
-          {/* 3. LISTA DE ASIGNACIONES */}
-          <View style={styles.listContainer}>
-            {filteredAssignments.map((item) => {
-              const completedVal = Number(item.completed);
-              const totalVal = Number(item.total);
-              const progress = totalVal > 0 ? (completedVal / totalVal) * 100 : 0;
-              const isDone = progress === 100;
+    const formatDate = (dateString: string) => {
+        if (!dateString) return "";
+        const date = new Date(dateString);
+        return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+    };
 
-              const pieData = [
-                { value: completedVal, color: isDone ? '#22C55E' : item.color },
-                { value: totalVal - completedVal, color: '#F1F5F9' }
-              ];
+    const renderCard = ({ item }: { item: any }) => {
+        const isExpired = new Date(item.fecha_limite) < new Date();
+        // Calc días restantes
+        const diffTime = new Date(item.fecha_limite).getTime() - new Date().getTime();
+        const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-              return (
-                <Pressable
-                  key={item.id}
-                  onPress={() => navigation.navigate('TestAssignmentDetail', {
+        return (
+            <Pressable 
+                style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+                onPress={() => navigation.navigate("TestAssignmentDetail", {
                     assignmentId: item.id,
-                    testName: item.title,
-                    groupName: item.group
-                  })}
-                  style={({ pressed }) => [
-                    styles.listItem,
-                    pressed && { backgroundColor: '#F8FAFC' }
-                  ]}
-                >
-                  <View style={[styles.colorIndicator, { backgroundColor: item.color }]} />
-
-                  <View style={styles.listItemContent}>
-                    <Text style={styles.listItemTitle}>{item.title}</Text>
-                    <View style={styles.listItemRow}>
-                      <Text style={styles.listItemSubtitle}>{item.group}</Text>
-                      <View style={[
-                        styles.dateBadge,
-                        isDone ? styles.dateBadgeGreen : styles.dateBadgeOrange
-                      ]}>
-                        {isDone ? <CheckCircle2 size={10} color="#15803d" /> : <Clock size={10} color="#c2410c" />}
-                        <Text style={[
-                          styles.dateBadgeText,
-                          isDone ? { color: '#15803d' } : { color: '#c2410c' }
-                        ]}>
-                          {item.deadline}
-                        </Text>
-                      </View>
+                    testName: item.testName,
+                    groupName: item.groupName
+                })}
+            >
+                {/* Header: Group Badge + Status */}
+                <View style={styles.cardHeader}>
+                    <View style={styles.groupBadge}>
+                        <Users size={12} color={COLORS.primary} />
+                        <Text style={styles.groupBadgeText}>{item.groupName}</Text>
                     </View>
-                  </View>
+                    <View style={[
+                        styles.statusBadge, 
+                        isExpired ? { backgroundColor: '#fee2e2' } : { backgroundColor: '#dcfce7' }
+                    ]}>
+                        <Text style={[
+                            styles.statusText,
+                            isExpired ? { color: COLORS.danger } : { color: COLORS.success }
+                        ]}>
+                            {isExpired ? "Cerrada" : `${daysLeft} días rest.`}
+                        </Text>
+                    </View>
+                </View>
 
-                  <View style={styles.pieChartContainer} pointerEvents="none">
-                    <PieChart
-                      donut
-                      radius={18}
-                      innerRadius={14}
-                      data={pieData}
-                      centerLabelComponent={() => (
-                        <Text style={styles.pieChartLabel}>{Math.round(progress)}%</Text>
-                      )}
-                    />
-                  </View>
+                {/* Title */}
+                <Text style={styles.cardTitle}>{item.testName}</Text>
 
-                  <ChevronRight size={18} color="#cbd5e1" />
+                {/* Dates Row */}
+                <View style={styles.infoRow}>
+                    <View style={styles.infoItem}>
+                        <Calendar size={14} color={COLORS.textMuted} />
+                        <Text style={styles.infoText}>Asignada: {formatDate(item.fecha_asignacion)}</Text>
+                    </View>
+                    <View style={styles.infoItem}>
+                        <AlertCircle size={14} color={isExpired ? COLORS.danger : COLORS.textMuted} />
+                        <Text style={[styles.infoText, isExpired && { color: COLORS.danger }]}>
+                            Límite: {formatDate(item.fecha_limite)}
+                        </Text>
+                    </View>
+                </View>
+
+                {/* Progress Bar */}
+                <View style={styles.progressContainer}>
+                    <View style={styles.progressHeader}>
+                        <Text style={styles.progressLabel}>Entregas</Text>
+                        <Text style={styles.progressValue}>{item.completed}/{item.total} ({item.progress}%)</Text>
+                    </View>
+                    <View style={styles.progressBarBg}>
+                        <View style={[
+                            styles.progressBarFill, 
+                            { width: `${item.progress}%`, backgroundColor: item.progress === 100 ? COLORS.success : COLORS.primary }
+                        ]} />
+                    </View>
+                </View>
+            </Pressable>
+        );
+    };
+
+    return (
+        <SafeAreaView style={styles.container}>
+            <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
+            
+            {/* Header */}
+            <View style={styles.header}>
+                <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+                    <ChevronLeft size={24} color={COLORS.textDark} />
                 </Pressable>
-              );
-            })}
-          </View>
+                <Text style={styles.headerTitle}>Gestionar Asignaciones</Text>
+                <View style={{ width: 40 }} /> 
+            </View>
 
-        </ScrollView>
-      </SafeAreaView>
-    </View>
-  );
+            {/* Search */}
+            <View style={styles.searchContainer}>
+                <Search size={20} color={COLORS.textMuted} style={styles.searchIcon} />
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder="Buscar por prueba o grupo..."
+                    placeholderTextColor={COLORS.textMuted}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                />
+            </View>
+
+            {/* Tabs */}
+            <View style={styles.tabContainer}>
+                <Pressable 
+                    style={[styles.tab, activeTab === 'active' && styles.activeTab]}
+                    onPress={() => setActiveTab('active')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'active' && styles.activeTabText]}>Activas</Text>
+                </Pressable>
+                <Pressable 
+                    style={[styles.tab, activeTab === 'history' && styles.activeTab]}
+                    onPress={() => setActiveTab('history')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>Historial</Text>
+                </Pressable>
+            </View>
+
+            {/* List */}
+            {loading ? (
+                <View style={styles.loaderContainer}>
+                    <ActivityIndicator size="large" color={COLORS.primary} />
+                </View>
+            ) : (
+                <FlatList
+                    data={filteredData}
+                    keyExtractor={(item) => `${item.id}-${item.groupName}`}
+                    renderItem={renderCard}
+                    contentContainerStyle={styles.listContent}
+                    showsVerticalScrollIndicator={false}
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <CheckCircle2 size={48} color={COLORS.borderColor} />
+                            <Text style={styles.emptyText}>
+                                {activeTab === 'active' 
+                                    ? "No hay pruebas pendientes." 
+                                    : "No hay historial de pruebas."}
+                            </Text>
+                        </View>
+                    }
+                />
+            )}
+        </SafeAreaView>
+    );
 }
 
-// --- ESTILOS PUROS ---
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC', // slate-50
-  },
-  // Header
-  header: {
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F8FAFC',
-    zIndex: 10,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0f172a',
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  iconButtonPressed: {
-    backgroundColor: '#F1F5F9',
-  },
-  // Section Carousel
-  sectionContainer: {
-    marginBottom: 24,
-    paddingTop: 8,
-  },
-  sectionTitle: {
-    paddingHorizontal: 24,
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    marginBottom: 16,
-  },
-  cardGroup: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 24,
-    marginRight: 12,
-    width: 160,
-    height: 176,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    justifyContent: 'space-between',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardGroupTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    marginBottom: 4,
-    lineHeight: 18,
-  },
-  cardGroupSubtitle: {
-    fontSize: 10,
-    color: '#94a3b8',
-    fontWeight: '500',
-  },
-  miniChartContainer: {
-    height: 64,
-    marginLeft: -16,
-    overflow: 'hidden',
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  badgeSmall: {
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  badgeSmallText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#334155',
-  },
-  chevronContainer: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Filters
-  filtersContainer: {
-    marginBottom: 8,
-  },
-  filterChip: {
-    marginRight: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  filterChipActive: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
-  },
-  filterChipInactive: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E2E8F0',
-  },
-  filterText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  filterTextActive: {
-    color: '#FFFFFF',
-  },
-  filterTextInactive: {
-    color: '#475569',
-  },
-  // List Items
-  listContainer: {
-    paddingHorizontal: 24,
-    marginTop: 16,
-  },
-  listItem: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 20,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  colorIndicator: {
-    width: 4,
-    height: 40,
-    borderRadius: 2,
-    marginRight: 16,
-  },
-  listItemContent: {
-    flex: 1,
-    marginRight: 8,
-  },
-  listItemTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    marginBottom: 2,
-  },
-  listItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  listItemSubtitle: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '600',
-    marginRight: 8,
-  },
-  dateBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  dateBadgeGreen: { backgroundColor: '#DCFCE7' },
-  dateBadgeOrange: { backgroundColor: '#FFF7ED' },
-  dateBadgeText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginLeft: 4,
-  },
-  pieChartContainer: {
-    marginRight: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pieChartLabel: {
-    fontSize: 8,
-    fontWeight: 'bold',
-    color: '#94a3b8',
-  },
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    flex: 1,
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 24,
-    paddingBottom: 40,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  modalHandleContainer: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalHandle: {
-    width: 48,
-    height: 6,
-    backgroundColor: '#E2E8F0',
-    borderRadius: 3,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  modalSubtitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#0f172a',
-  },
-  modalBadge: {
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  modalBadgeText: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#2563EB',
-  },
-  modalBadgeLabel: {
-    fontSize: 10,
-    color: '#94a3b8',
-  },
-  chartContainerLarge: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 24,
-    padding: 16,
-    marginBottom: 24,
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  closeButton: {
-    backgroundColor: '#0f172a',
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  closeButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+    container: {
+        flex: 1,
+        backgroundColor: COLORS.background,
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    backButton: {
+        padding: 8,
+        borderRadius: 12,
+        backgroundColor: COLORS.white,
+        borderWidth: 1,
+        borderColor: COLORS.borderColor,
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: COLORS.textDark,
+    },
+    // Search
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.white,
+        marginHorizontal: 16,
+        paddingHorizontal: 12,
+        height: 48,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: COLORS.borderColor,
+        marginBottom: 16,
+    },
+    searchIcon: {
+        marginRight: 8,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 15,
+        color: COLORS.textDark,
+        height: '100%',
+    },
+    // Tabs
+    tabContainer: {
+        flexDirection: 'row',
+        marginHorizontal: 16,
+        backgroundColor: '#e2e8f0', 
+        borderRadius: 12,
+        padding: 4,
+        marginBottom: 16,
+    },
+    tab: {
+        flex: 1,
+        paddingVertical: 8,
+        alignItems: 'center',
+        borderRadius: 10,
+    },
+    activeTab: {
+        backgroundColor: COLORS.white,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    tabText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.textMuted,
+    },
+    activeTabText: {
+        color: COLORS.primary,
+        fontWeight: '700',
+    },
+    // List
+    listContent: {
+        paddingHorizontal: 16,
+        paddingBottom: 24,
+        gap: 16,
+    },
+    card: {
+        backgroundColor: COLORS.white,
+        borderRadius: 20,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: COLORS.borderColor,
+        shadowColor: COLORS.borderColor, // Sombra sutil
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    cardPressed: {
+        backgroundColor: '#f8fafc',
+        transform: [{ scale: 0.99 }],
+    },
+    cardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+    },
+    groupBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.primaryLight,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        gap: 6,
+    },
+    groupBadgeText: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        color: COLORS.primary,
+    },
+    statusBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+    },
+    statusText: {
+        fontSize: 11,
+        fontWeight: 'bold',
+    },
+    cardTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: COLORS.textDark,
+        marginBottom: 12,
+    },
+    infoRow: {
+        flexDirection: 'row',
+        gap: 16,
+        marginBottom: 16,
+    },
+    infoItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    infoText: {
+        fontSize: 12,
+        color: COLORS.textMuted,
+    },
+    // Progress
+    progressContainer: {
+        gap: 6,
+    },
+    progressHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    progressLabel: {
+        fontSize: 12,
+        color: COLORS.textMuted,
+        fontWeight: '500',
+    },
+    progressValue: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        color: COLORS.textDark,
+    },
+    progressBarBg: {
+        height: 8,
+        backgroundColor: COLORS.background,
+        borderRadius: 4,
+        overflow: 'hidden',
+    },
+    progressBarFill: {
+        height: '100%',
+        borderRadius: 4,
+    },
+    // Utils
+    loaderContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    emptyContainer: {
+        paddingTop: 60,
+        alignItems: 'center',
+        gap: 12,
+    },
+    emptyText: {
+        fontSize: 14,
+        color: COLORS.textMuted,
+    }
 });

@@ -1,6 +1,18 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
-  View, Text, ScrollView, Pressable, StatusBar, Modal, TextInput, StyleSheet, ActivityIndicator, Alert
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  StatusBar,
+  Modal,
+  TextInput,
+  StyleSheet,
+  ActivityIndicator,
+  FlatList,
+  Alert,
+  Platform,
+  KeyboardAvoidingView
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -10,449 +22,996 @@ import CustomAlert, { AlertType } from "../../components/CustomAlert";
 import { supabase } from "../../lib/supabase";
 import { useFocusEffect } from "@react-navigation/native";
 
-const CustomAlertAny = CustomAlert as any;
+// --- CONSTANTES DE DISEÑO ---
+const COLORS = {
+  primary: "#2563EB",
+  secondary: "#3B82F6",
+  background: "#F8FAFC",
+  cardBg: "#FFFFFF",
+  textDark: "#0F172A",
+  textMuted: "#64748B",
+  borderColor: "#E2E8F0",
+  danger: "#EF4444",
+  success: "#10B981",
+  warning: "#F59E0B",
+  inputBg: "#F1F5F9",
+};
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "GroupDetail">;
 
-interface AthleteUser {
-  no_documento: number;
-  nombre_completo: string;
-  rol: string;
+interface Member {
+  id: number;
+  name: string;
+  role: string;
 }
 
-const mockGroupTests = {
-  active: [
-    { id: 1, name: 'Test de Cooper', deadline: 'Hoy', completedCount: 5 },
-    { id: 2, name: 'Sentadilla Max', deadline: 'Mañana', completedCount: 2 },
-  ],
-  history: [
-    { id: 3, name: 'Velocidad 100m', date: '20 Nov', completedCount: 12, totalCount: 12 },
-    { id: 4, name: 'Flexiones', date: '15 Nov', completedCount: 10, totalCount: 12 },
-  ]
-};
+interface TestAssignment {
+  id: number;
+  testName: string;
+  deadline: string | null;
+  createdAt: string;
+}
 
 export default function GroupDetail({ navigation, route }: Props) {
   const { group } = route.params || {};
-  const [activeTab, setActiveTab] = useState<'members' | 'tests'>('members');
+
+  // --- ESTADOS DE DATOS ---
   const [groupName, setGroupName] = useState(group?.nombre || 'Sin Nombre');
-  const [members, setMembers] = useState<any[]>([]);
-  const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
-  const [loadingAction, setLoadingAction] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [tests, setTests] = useState<TestAssignment[]>([]);
+
+  // --- ESTADOS DE UI ---
+  const [activeTab, setActiveTab] = useState<'members' | 'tests'>('members');
   const [loadingMembers, setLoadingMembers] = useState(true);
+  const [loadingTests, setLoadingTests] = useState(true);
+  const [loadingAction, setLoadingAction] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [showEditNameModal, setShowEditNameModal] = useState(false);
+
+  // --- ESTADOS DE BÚSQUEDA (NUEVO UX) ---
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
-  const [searchDoc, setSearchDoc] = useState('');
-  const [foundAthlete, setFoundAthlete] = useState<AthleteUser | null>(null);
-  const [searchError, setSearchError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
-  const [alertConfig, setAlertConfig] = useState({ visible: false, title: "", message: "", type: "info" as AlertType, onConfirm: undefined as (() => void) | undefined });
+
+  // --- ESTADOS DE SELECCIÓN ---
+  const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
+
+  // --- ESTADOS DE ALERTA ---
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: AlertType;
+    onConfirm?: () => void;
+  }>({ visible: false, title: "", message: "", type: "info" });
 
   const showAlert = (title: string, message: string, type: AlertType = "info", onConfirm?: () => void) => {
     setAlertConfig({ visible: true, title, message, type, onConfirm });
   };
 
-  const fetchGroupMembers = useCallback(async () => {
+  const closeAlert = () => setAlertConfig({ ...alertConfig, visible: false });
+
+  // ----------------------------------------------------------------------
+  // 1. CARGA DE DATOS (MIEMBROS Y PRUEBAS)
+  // ----------------------------------------------------------------------
+  const fetchData = useCallback(async () => {
     if (!group?.codigo) return;
+
+    // A. Cargar Miembros (Corregido: Navegando hasta Usuario)
     try {
       setLoadingMembers(true);
-      const { data, error } = await supabase
+      const { data: membersData, error: membersError } = await supabase
         .from('atleta_has_grupo')
-        .select(`atleta_no_documento, atleta:atleta_no_documento (usuario!atleta_no_documento_fkey (nombre_completo, rol))`)
+        .select(`
+          atleta_no_documento,
+          atleta:atleta_no_documento (
+            usuario (
+              no_documento,
+              nombre_completo,
+              rol
+            )
+          )
+        `)
         .eq('grupo_codigo', group.codigo);
-      if (error) throw error;
-      const formattedMembers = data.map((item: any) => ({
-        id: item.atleta_no_documento,
-        name: item.atleta?.usuario?.nombre_completo || 'Usuario Desconocido',
-        level: 'Atleta', status: 'Activo'
-      }));
+
+      if (membersError) throw membersError;
+
+      const formattedMembers = membersData.map((item: any) => {
+        // Accedemos a la info anidada: item -> atleta -> usuario
+        const userData = item.atleta?.usuario;
+        return {
+          id: userData?.no_documento || item.atleta_no_documento,
+          name: userData?.nombre_completo || 'Desconocido',
+          role: userData?.rol || 'Atleta'
+        };
+      });
       setMembers(formattedMembers);
-    } catch (error: any) { console.error("Error cargando miembros:", error.message); }
+    } catch (e) {
+      console.error("Error members:", e);
+      Alert.alert("Error", "No se pudieron cargar los miembros");
+    }
     finally { setLoadingMembers(false); }
+
+    // B. Cargar Pruebas (Corregido: Desde la tabla intermedia)
+    try {
+      setLoadingTests(true);
+      // Consultamos la tabla intermedia donde está el 'grupo_codigo'
+      const { data: testsData, error: testsError } = await supabase
+        .from('prueba_asignada_has_atleta')
+        .select(`
+                prueba_asignada:prueba_asignada_id (
+                    id,
+                    fecha_limite,
+                    fecha_asignacion,
+                    prueba:prueba_id ( nombre )
+                )
+            `)
+        .eq('grupo_codigo', group.codigo);
+
+      if (testsError) throw testsError;
+
+      // Filtramos duplicados (si una prueba está asignada a varios atletas del mismo grupo)
+      // y formateamos los datos
+      const uniqueTestsMap = new Map();
+
+      testsData.forEach((t: any) => {
+        const pa = t.prueba_asignada;
+        if (pa && !uniqueTestsMap.has(pa.id)) {
+          uniqueTestsMap.set(pa.id, {
+            id: pa.id,
+            testName: pa.prueba?.nombre || 'Prueba',
+            deadline: pa.fecha_limite,
+            createdAt: pa.fecha_asignacion
+          });
+        }
+      });
+
+      setTests(Array.from(uniqueTestsMap.values()));
+
+    } catch (e) {
+      console.error("Error tests:", e);
+    }
+    finally { setLoadingTests(false); }
+
   }, [group?.codigo]);
 
-  useFocusEffect(useCallback(() => { fetchGroupMembers(); }, [fetchGroupMembers]));
+  useFocusEffect(useCallback(() => { fetchData(); }, [fetchData]));
 
-  const handleSearchAthlete = async () => {
-    setSearchError(''); setFoundAthlete(null);
-    if (!searchDoc.trim()) return;
+  // ----------------------------------------------------------------------
+  // 2. LÓGICA DE BÚSQUEDA AVANZADA (UX MEJORADO)
+  // ----------------------------------------------------------------------
+
+  // Efecto Debounce para búsqueda
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (searchQuery.length > 2) {
+        performSearch();
+      } else {
+        setSearchResults([]);
+      }
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
+  const performSearch = async () => {
+    setSearching(true);
     try {
-      setSearching(true);
-      const { data, error } = await supabase.from('usuario').select('nombre_completo, no_documento, rol').eq('no_documento', parseInt(searchDoc)).maybeSingle();
+      // Determinamos si es búsqueda por número (documento) o texto (nombre)
+      const isNumeric = /^\d+$/.test(searchQuery);
+
+      let query = supabase
+        .from('usuario')
+        .select('no_documento, nombre_completo, rol')
+        .eq('rol', 'atleta') // Solo buscamos atletas
+        .limit(10);
+
+      if (isNumeric) {
+        // Búsqueda exacta o parcial por documento podría implementarse con cast, 
+        // pero Supabase a veces requiere text search. Usamos eq para exacto por ahora si es número
+        // O usamos un hack de rango o cast si se configuró en BD.
+        // Para simplicidad: Búsqueda exacta de documento O ilike en nombre
+        query = query.or(`no_documento.eq.${searchQuery},nombre_completo.ilike.%${searchQuery}%`);
+      } else {
+        query = query.ilike('nombre_completo', `%${searchQuery}%`);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
-      if (data) {
-        const exists = members.find(m => m.id === data.no_documento);
-        exists ? setSearchError('Este atleta ya pertenece al grupo.') : setFoundAthlete(data);
-      } else { setSearchError('No se encontró información.'); }
-    } catch (e: any) { setSearchError('Error al buscar usuario.'); } finally { setSearching(false); }
+
+      // Marcar los que ya están en el grupo
+      const resultsWithStatus = data.map((user: any) => ({
+        ...user,
+        isAdded: members.some(m => m.id === user.no_documento)
+      }));
+
+      setSearchResults(resultsWithStatus);
+    } catch (error) {
+      console.error("Search error:", error);
+    } finally {
+      setSearching(false);
+    }
   };
 
-  const handleAddFoundAthlete = async () => {
-    if (!foundAthlete || !group?.codigo) return;
+  const handleAddAthlete = async (athlete: any) => {
     try {
-      setLoadingAction(true);
-      const { error: linkError } = await supabase.from('atleta_has_grupo').insert({ grupo_codigo: group.codigo, atleta_no_documento: foundAthlete.no_documento });
-      if (linkError) { if (linkError.code === '23505') throw new Error("El atleta ya está en este grupo."); throw linkError; }
-      showAlert("Añadido", `${foundAthlete.nombre_completo} ha sido agregado.`, "success");
-      setShowAddMemberModal(false); setSearchDoc(''); setFoundAthlete(null); fetchGroupMembers();
-    } catch (error: any) { Alert.alert("Error", error.message); } finally { setLoadingAction(false); }
+      // Optimistic UI update (opcional, pero seguro mejor esperar DB)
+      const { error } = await supabase
+        .from('atleta_has_grupo')
+        .insert({
+          grupo_codigo: group.codigo,
+          atleta_no_documento: athlete.no_documento
+        });
+
+      if (error) throw error;
+
+      // Actualizar estado local de búsqueda
+      setSearchResults(prev => prev.map(p =>
+        p.no_documento === athlete.no_documento ? { ...p, isAdded: true } : p
+      ));
+
+      // Refrescar lista principal
+      fetchData();
+
+    } catch (error: any) {
+      Alert.alert("Error", "No se pudo agregar al atleta.");
+    }
   };
 
-  const handleRemoveSelected = () => {
-    if (selectedMembers.length === 0) return;
-    showAlert("¿Eliminar Atletas?", `Se eliminarán ${selectedMembers.length} atletas.`, "error", async () => {
-      try {
-        setLoadingAction(true);
-        const { error } = await supabase.from('atleta_has_grupo').delete().eq('grupo_codigo', group.codigo).in('atleta_no_documento', selectedMembers);
-        if (error) throw error;
-        showAlert("Eliminados", "Atletas removidos correctamente.", "success"); setSelectedMembers([]); fetchGroupMembers();
-      } catch (error: any) { Alert.alert("Error", error.message); } finally { setLoadingAction(false); }
-    });
-  };
-
-  const handleDeleteGroup = async () => {
-    setShowOptionsModal(false);
-    showAlert("¿Eliminar Grupo?", "Esta acción es permanente.", "error", async () => {
-      try {
-        setLoadingAction(true);
-        const { error } = await supabase.from('grupo').delete().eq('codigo', group.codigo);
-        if (error) throw error; navigation.goBack();
-      } catch (error: any) { Alert.alert("Error", error.message); } finally { setLoadingAction(false); }
-    });
-  };
+  // ----------------------------------------------------------------------
+  // 3. ACCIONES DEL GRUPO (ELIMINAR, EDITAR)
+  // ----------------------------------------------------------------------
 
   const handleUpdateGroupName = async () => {
     if (!groupName.trim()) return;
     try {
       setLoadingAction(true);
       const { error } = await supabase.from('grupo').update({ nombre: groupName }).eq('codigo', group.codigo);
-      if (error) throw error; setShowEditNameModal(false); showAlert("Éxito", "Nombre actualizado.", "success");
-    } catch (error: any) { Alert.alert("Error", error.message); } finally { setLoadingAction(false); }
+      if (error) throw error;
+      setShowEditNameModal(false);
+      showAlert("Éxito", "Nombre actualizado.", "success");
+    } catch (error: any) { Alert.alert("Error", error.message); }
+    finally { setLoadingAction(false); }
   };
 
-  const toggleMember = (memberId: number) => {
-    if (selectedMembers.includes(memberId)) setSelectedMembers(selectedMembers.filter(id => id !== memberId));
-    else setSelectedMembers([...selectedMembers, memberId]);
+  const handleDeleteGroup = () => {
+    setShowOptionsModal(false);
+    showAlert("¿Eliminar Grupo?", "Esta acción es permanente y eliminará todas las asignaciones.", "error", async () => {
+      try {
+        setLoadingAction(true);
+        const { error } = await supabase.from('grupo').delete().eq('codigo', group.codigo);
+        if (error) throw error;
+        navigation.goBack();
+      } catch (error: any) { Alert.alert("Error", error.message); }
+      finally { setLoadingAction(false); }
+    });
   };
 
-  const handleAssignTest = () => {
-    if (!group) return;
-    navigation.navigate('AssignTestStep1', { targetGroup: { codigo: group.codigo, nombre: group.nombre } });
+  const handleRemoveSelectedMembers = () => {
+    if (selectedMembers.length === 0) return;
+    showAlert("Eliminar Atletas", `¿Sacar a ${selectedMembers.length} atletas del grupo?`, "warning", async () => {
+      try {
+        setLoadingAction(true);
+        const { error } = await supabase
+          .from('atleta_has_grupo')
+          .delete()
+          .eq('grupo_codigo', group.codigo)
+          .in('atleta_no_documento', selectedMembers);
+
+        if (error) throw error;
+
+        setSelectedMembers([]);
+        fetchData();
+        showAlert("Listo", "Atletas removidos.", "success");
+      } catch (e: any) { Alert.alert("Error", e.message); }
+      finally { setLoadingAction(false); }
+    });
   };
+
+  const toggleMemberSelection = (id: number) => {
+    if (selectedMembers.includes(id)) {
+      setSelectedMembers(prev => prev.filter(mId => mId !== id));
+    } else {
+      setSelectedMembers(prev => [...prev, id]);
+    }
+  };
+
+  // ----------------------------------------------------------------------
+  // RENDER
+  // ----------------------------------------------------------------------
 
   return (
-    <View className="flex-1 bg-[#F5F5F7]">
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <CustomAlertAny visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} type={alertConfig.type} onClose={() => setAlertConfig({ ...alertConfig, visible: false })} onConfirm={alertConfig.onConfirm} />
-      {loadingAction && <View className="absolute inset-0 bg-black/20 z-50 items-center justify-center"><ActivityIndicator size="large" color="#2563EB" /></View>}
 
-      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <View className="px-6 pt-4 pb-2">
-          <View className="flex-row items-center justify-between mb-4">
-            <Pressable onPress={() => navigation.goBack()} className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm border border-gray-100 active:bg-gray-50"><Ionicons name="arrow-back" size={20} color="#111827" /></Pressable>
-            <Pressable onPress={() => setShowOptionsModal(true)} className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm border border-gray-100 active:bg-gray-50"><Ionicons name="ellipsis-horizontal" size={20} color="#111827" /></Pressable>
-          </View>
-          <Text className="text-gray-900 text-3xl font-bold mb-1">{groupName}</Text>
-          <View className="flex-row items-center gap-2 mb-2">
-            <Text className="text-gray-500 text-base font-medium">Detalle del equipo</Text>
-            <View className="bg-blue-100 px-2 py-0.5 rounded-md"><Text className="text-blue-700 text-xs font-bold tracking-widest">{group?.codigo || 'COD'}</Text></View>
-          </View>
+      {/* Loading Overlay Global */}
+      {loadingAction && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
+      )}
 
-        <ScrollView className="flex-1 px-6 pt-2" contentContainerStyle={{ paddingBottom: 100 }}>
-          <Text className="text-gray-400 text-sm mb-6 leading-relaxed">{group?.descripcion || 'Sin descripción disponible.'}</Text>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
 
-          <View className="flex-row bg-white p-1 rounded-2xl mb-6 border border-gray-100 shadow-sm">
-            <Pressable onPress={() => setActiveTab('members')} className={`flex-1 py-3 rounded-xl items-center justify-center ${activeTab === 'members' ? 'bg-blue-50' : 'bg-transparent'}`}><Text className={`font-bold text-sm ${activeTab === 'members' ? 'text-blue-700' : 'text-gray-500'}`}>Atletas ({members.length})</Text></Pressable>
-            <Pressable onPress={() => setActiveTab('tests')} className={`flex-1 py-3 rounded-xl items-center justify-center ${activeTab === 'tests' ? 'bg-blue-50' : 'bg-transparent'}`}><Text className={`font-bold text-sm ${activeTab === 'tests' ? 'text-blue-700' : 'text-gray-500'}`}>Evaluaciones</Text></Pressable>
+        {/* HEADER */}
+        <View style={styles.header}>
+          <View style={styles.navBar}>
+            <Pressable onPress={() => navigation.goBack()} style={styles.iconButton}>
+              <Ionicons name="arrow-back" size={20} color={COLORS.textDark} />
+            </Pressable>
+            <Pressable onPress={() => setShowOptionsModal(true)} style={styles.iconButton}>
+              <Ionicons name="ellipsis-horizontal" size={20} color={COLORS.textDark} />
+            </Pressable>
           </View>
 
-          {activeTab === 'members' && (
-            <>
-              <View className="flex-row gap-3 mb-6">
-                <Pressable onPress={() => setShowAddMemberModal(true)} className="flex-1 bg-blue-600 h-14 rounded-2xl flex-row items-center justify-center shadow-lg shadow-blue-200 active:scale-[0.98]"><Ionicons name="person-add" size={20} color="white" style={{ marginRight: 8 }} /><Text className="text-white font-bold text-sm">Añadir Atleta</Text></Pressable>
-              </View>
-              {selectedMembers.length > 0 && (
-                <View className="mb-6">
-                  <View className="bg-red-50 border border-red-100 rounded-2xl p-4 flex-row justify-between items-center shadow-sm">
-                    <View className="flex-row items-center">
-                      <View className="bg-red-100 p-2 rounded-full mr-3"><Ionicons name="trash-outline" size={20} color="#DC2626" /></View>
-                      <View><Text className="text-red-900 text-xs font-bold uppercase">Acción</Text><Text className="text-red-700 text-sm font-bold">Eliminar {selectedMembers.length} seleccionados</Text></View>
-                    </View>
-                    <Pressable onPress={handleRemoveSelected} className="bg-red-600 px-4 py-2 rounded-xl active:bg-red-700"><Text className="text-white font-bold text-xs">Confirmar</Text></Pressable>
-                  </View>
-                </View>
-              )}
-              {loadingMembers ? (<ActivityIndicator color="#2563EB" size="small" />) : members.length === 0 ? (
-                <View className="bg-white p-6 rounded-2xl items-center justify-center border border-dashed border-gray-300"><Ionicons name="people-outline" size={40} color="#D1D5DB" /><Text className="text-gray-400 text-center mt-2">No hay atletas.</Text></View>
-              ) : (
-                <View className="space-y-3">
-                  {members.map((member) => {
-                    const isSelected = selectedMembers.includes(member.id);
+          <Text style={styles.groupTitle}>{groupName}</Text>
 
-                    return (
-                      <Pressable
-                        key={member.id}
-                        onPress={() => navigation.navigate('AthleteDetail', { athlete: member })}
-                        onLongPress={() => toggleMember(member.id)}
-                        className={`
-                    p-4 rounded-2xl flex-row items-center justify-between 
-                    shadow-sm border my-2
-                    ${isSelected ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}
-                `}
-                      >
-                        {/* Left content */}
-                        <View className="flex-row items-center flex-1 mr-4">
-                          {/* Avatar */}
-                          <View
-                            className={`
-                            w-11 h-11 rounded-full items-center justify-center mr-3 shadow-sm
-                            ${isSelected ? 'bg-red-100' : 'bg-gray-100'}
-                        `}
-                          >
-                            <Ionicons
-                              name={isSelected ? 'trash-outline' : 'person-outline'}
-                              size={20}
-                              color={isSelected ? '#DC2626' : '#6B7280'}
-                            />
-                          </View>
-
-                          {/* Member info */}
-                          <View className="flex-1">
-                            <Text
-                              className={`font-semibold text-base ${isSelected ? 'text-red-900' : 'text-gray-900'
-                                }`}
-                            >
-                              {member.name}
-                            </Text>
-
-                            <View className="flex-row items-center mt-1">
-                              <Ionicons name="card-outline" size={12} color="#9CA3AF" />
-                              <Text className="text-gray-400 text-xs ml-1">
-                                Doc: {member.id}
-                              </Text>
-                            </View>
-                          </View>
-                        </View>
-
-                        {/* Right icon */}
-                        {isSelected ? (
-                          <Ionicons name="close-circle" size={24} color="#DC2626" />
-                        ) : (
-                          <Ionicons name="chevron-forward" size={20} color="#E5E7EB" />
-                        )}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-              )}
-            </>
-          )}
-
-          {activeTab === 'tests' && (
-            <>
-              <View className="flex-row gap-3 mb-6">
-                <Pressable onPress={handleAssignTest} className="flex-1 bg-blue-600 h-14 rounded-2xl flex-row items-center justify-center shadow-lg shadow-blue-200 active:scale-[0.98]"><Ionicons name="paper-plane" size={20} color="white" style={{ marginRight: 8 }} /><Text className="text-white font-bold text-sm">Asignar Nueva Prueba</Text></Pressable>
-              </View>
-
-              {/* ASIGNACIONES ACTIVAS - Llevan a TestAssignmentDetail (Pestaña FALTAN) */}
-              <Text className="text-gray-900 font-bold text-lg mb-3 ml-1">En Curso</Text>
-              <View className="space-y-3 mb-6">
-                {mockGroupTests.active.map((test) => (
-                  <Pressable
-                    key={test.id}
-                    onPress={() => navigation.navigate(
-                      'TestAssignmentDetail',
-                      { assignmentId: test.id, testName: test.name, groupName: groupName, initialTab: 'pending' }
-                    )}
-                    className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 active:bg-gray-50 my-2"
-                  >
-                    <View className="flex-row justify-between items-center mb-2">
-                      <View className="flex-row items-center gap-3">
-                        <View className="w-10 h-10 bg-orange-50 rounded-full items-center justify-center">
-                          <Ionicons name="hourglass" size={20} color="#F97316" />
-                        </View>
-
-                        <View>
-                          <Text className="font-bold text-slate-900">{test.name}</Text>
-                          <Text className="text-xs text-slate-500">Vence: {test.deadline}</Text>
-                        </View>
-                      </View>
-
-                      <Ionicons name="chevron-forward" size={20} color="#E5E7EB" />
-                    </View>
-
-                    <View>
-                      <View className="flex-row justify-between mb-1">
-                        <Text className="text-[10px] text-slate-400 font-bold uppercase">Progreso</Text>
-                        <Text className="text-[10px] text-blue-600 font-bold">
-                          {test.completedCount}/{members.length > 0 ? members.length : 1} completados
-                        </Text>
-                      </View>
-
-                      <View className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <View className="h-full bg-blue-500 w-[40%]" />
-                      </View>
-                    </View>
-                  </Pressable>
-                ))}
-              </View>
-
-
-              {/* HISTORIAL COMPLETADO - Llevan a TestAssignmentDetail (Pestaña LISTOS) */}
-              <Text className="text-gray-900 font-bold text-lg mb-3 ml-1">Historial Completado</Text>
-              <View className="space-y-3">
-                {mockGroupTests.history.map((test) => (
-                  <Pressable
-                    key={test.id}
-                    onPress={() =>
-                      navigation.navigate('TestAssignmentDetail', {
-                        assignmentId: test.id,
-                        testName: test.name,
-                        groupName: groupName,
-                        initialTab: 'completed',
-                      })
-                    }
-                    className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 opacity-80 flex-row justify-between items-center active:bg-gray-50 my-2"
-                  >
-                    <View className="flex-row items-center gap-3">
-                      <View className="w-10 h-10 bg-emerald-50 rounded-full items-center justify-center">
-                        <Ionicons name="checkmark-done" size={20} color="#10B981" />
-                      </View>
-
-                      <View>
-                        <Text className="font-bold text-slate-900">{test.name}</Text>
-                        <Text className="text-xs text-slate-500">{test.date}</Text>
-                      </View>
-                    </View>
-
-                    <View className="flex-row items-center">
-                      <View className="items-end mr-2">
-                        <Text className="text-emerald-700 font-bold text-sm">Completado</Text>
-                        <Text className="text-xs text-slate-400">{test.completedCount} entregas</Text>
-                      </View>
-
-                      <Ionicons name="chevron-forward" size={20} color="#E5E7EB" />
-                    </View>
-                  </Pressable>
-                ))}
-              </View>
-
-            </>
-          )}
-        </ScrollView>
-      </SafeAreaView>
-
-      {/* MODALES CON INPUTS SEGUROS */}
-      <Modal visible={showEditNameModal} transparent animationType="fade" onRequestClose={() => setShowEditNameModal(false)}>
-        <View className="flex-1 bg-black/50 justify-center px-6">
-          <View className="bg-white rounded-[32px] p-6 shadow-xl">
-            <Text className="text-lg font-bold text-slate-900 mb-4 text-center">Editar Nombre</Text>
-            <TextInput value={groupName} onChangeText={setGroupName} style={styles.safeInput} />
-            <View className="flex-row gap-3 mt-6">
-              <Pressable onPress={() => setShowEditNameModal(false)} className="flex-1 h-12 justify-center items-center rounded-xl border border-slate-200"><Text className="font-bold text-slate-600">Cancelar</Text></Pressable>
-              <Pressable onPress={handleUpdateGroupName} className="flex-1 h-12 justify-center items-center rounded-xl bg-blue-600"><Text className="font-bold text-white">Guardar</Text></Pressable>
+          <View style={styles.groupMetaRow}>
+            <Text style={styles.groupMetaLabel}>Código de acceso:</Text>
+            <View style={styles.codeBadge}>
+              <Text style={styles.codeText}>{group?.codigo || '---'}</Text>
             </View>
           </View>
         </View>
+
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
+          <Text style={styles.description}>
+            {group?.descripcion || 'Sin descripción disponible para este grupo.'}
+          </Text>
+
+          {/* TABS */}
+          <View style={styles.tabContainer}>
+            <Pressable
+              onPress={() => setActiveTab('members')}
+              style={[styles.tab, activeTab === 'members' && styles.activeTab]}
+            >
+              <Text style={[styles.tabText, activeTab === 'members' && styles.activeTabText]}>
+                Atletas ({members.length})
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setActiveTab('tests')}
+              style={[styles.tab, activeTab === 'tests' && styles.activeTab]}
+            >
+              <Text style={[styles.tabText, activeTab === 'tests' && styles.activeTabText]}>
+                Evaluaciones
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* CONTENIDO TABS */}
+          {activeTab === 'members' ? (
+            <View>
+              {/* Botón Añadir */}
+              <Pressable onPress={() => setShowAddMemberModal(true)} style={styles.primaryButton}>
+                <Ionicons name="person-add" size={20} color="white" />
+                <Text style={styles.primaryButtonText}>Añadir Atleta</Text>
+              </Pressable>
+
+              {/* Barra de acción múltiple */}
+              {selectedMembers.length > 0 && (
+                <View style={styles.selectionBar}>
+                  <Text style={styles.selectionText}>{selectedMembers.length} seleccionados</Text>
+                  <Pressable onPress={handleRemoveSelectedMembers} style={styles.deleteButton}>
+                    <Text style={styles.deleteButtonText}>Eliminar</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {/* Lista de Miembros */}
+              {loadingMembers ? (
+                <ActivityIndicator style={{ marginTop: 20 }} color={COLORS.primary} />
+              ) : members.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="people-outline" size={48} color={COLORS.borderColor} />
+                  <Text style={styles.emptyText}>No hay atletas en este grupo</Text>
+                </View>
+              ) : (
+                members.map((member) => {
+                  const isSelected = selectedMembers.includes(member.id);
+                  return (
+                    <Pressable
+                      key={member.id}
+                      onLongPress={() => toggleMemberSelection(member.id)}
+                      onPress={() => {
+                        if (selectedMembers.length > 0) toggleMemberSelection(member.id);
+                        else navigation.navigate('AthleteDetail', { athlete: member });
+                      }}
+                      style={[styles.card, isSelected && styles.cardSelected]}
+                    >
+                      <View style={styles.cardContent}>
+                        <View style={[styles.avatar, isSelected && { backgroundColor: '#FEE2E2' }]}>
+                          <Ionicons
+                            name={isSelected ? "checkmark" : "person"}
+                            size={20}
+                            color={isSelected ? COLORS.danger : COLORS.primary}
+                          />
+                        </View>
+                        <View>
+                          <Text style={[styles.cardTitle, isSelected && { color: COLORS.danger }]}>{member.name}</Text>
+                          <Text style={styles.cardSubtitle}>Doc: {member.id}</Text>
+                        </View>
+                      </View>
+                      {!isSelected && <Ionicons name="chevron-forward" size={20} color={COLORS.borderColor} />}
+                    </Pressable>
+                  )
+                })
+              )}
+            </View>
+          ) : (
+            <View>
+              {/* Botón Asignar Prueba */}
+              <Pressable onPress={() => navigation.navigate('AssignTestStep1', { targetGroup: { codigo: group.codigo, nombre: group.nombre } })} style={styles.primaryButton}>
+                <Ionicons name="clipboard" size={20} color="white" />
+                <Text style={styles.primaryButtonText}>Asignar Nueva Prueba</Text>
+              </Pressable>
+
+              <Text style={styles.sectionHeader}>Historial de Asignaciones</Text>
+
+              {loadingTests ? (
+                <ActivityIndicator style={{ marginTop: 20 }} color={COLORS.primary} />
+              ) : tests.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="document-text-outline" size={48} color={COLORS.borderColor} />
+                  <Text style={styles.emptyText}>No se han asignado pruebas aún</Text>
+                </View>
+              ) : (
+                tests.map((test) => (
+                  <Pressable
+                    key={test.id}
+                    onPress={() => navigation.navigate('TestAssignmentDetail', {
+                      assignmentId: test.id,
+                      testName: test.testName,
+                      groupName: groupName,
+                      initialTab: 'pending'
+                    })}
+                    style={styles.card}
+                  >
+                    <View style={styles.cardContent}>
+                      <View style={[styles.avatar, { backgroundColor: '#FFEDD5' }]}>
+                        <Ionicons name="timer-outline" size={20} color={COLORS.warning} />
+                      </View>
+                      <View>
+                        <Text style={styles.cardTitle}>{test.testName}</Text>
+                        <Text style={styles.cardSubtitle}>
+                          Asignada: {new Date(test.createdAt).toLocaleDateString()}
+                        </Text>
+                      </View>
+                    </View>
+                    {test.deadline && (
+                      <View style={styles.deadlineBadge}>
+                        <Text style={styles.deadlineText}>Vence: {new Date(test.deadline).toLocaleDateString()}</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                ))
+              )}
+            </View>
+          )}
+
+        </ScrollView>
+      </SafeAreaView>
+
+      {/* --- MODAL 1: BÚSQUEDA DE ATLETAS (MEJORADO) --- */}
+      <Modal visible={showAddMemberModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAddMemberModal(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cardBg }}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Añadir Atletas</Text>
+            <Pressable onPress={() => setShowAddMemberModal(false)} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color={COLORS.textDark} />
+            </Pressable>
+          </View>
+
+          <View style={styles.modalBody}>
+            <View style={styles.searchBox}>
+              <Ionicons name="search" size={20} color={COLORS.textMuted} />
+              <TextInput
+                placeholder="Buscar por nombre o documento..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                style={styles.searchInput}
+                autoFocus
+              />
+              {searching && <ActivityIndicator size="small" color={COLORS.primary} />}
+            </View>
+
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item) => item.no_documento.toString()}
+              contentContainerStyle={{ paddingTop: 16 }}
+              ListEmptyComponent={
+                searchQuery.length > 2 && !searching ? (
+                  <Text style={styles.emptyText}>No se encontraron atletas.</Text>
+                ) : null
+              }
+              renderItem={({ item }) => (
+                <View style={styles.searchResultItem}>
+                  <View style={styles.resultInfo}>
+                    <View style={[styles.avatar, { width: 36, height: 36, marginRight: 12 }]}>
+                      <Text style={{ fontWeight: 'bold', color: COLORS.primary }}>
+                        {item.nombre_completo.charAt(0)}
+                      </Text>
+                    </View>
+                    <View>
+                      <Text style={styles.resultName}>{item.nombre_completo}</Text>
+                      <Text style={styles.resultDoc}>{item.no_documento}</Text>
+                    </View>
+                  </View>
+
+                  {item.isAdded ? (
+                    <View style={styles.addedBadge}>
+                      <Text style={styles.addedText}>Añadido</Text>
+                    </View>
+                  ) : (
+                    <Pressable onPress={() => handleAddAthlete(item)} style={styles.addButton}>
+                      <Ionicons name="add" size={20} color="white" />
+                    </Pressable>
+                  )}
+                </View>
+              )}
+            />
+          </View>
+        </SafeAreaView>
       </Modal>
 
+      {/* --- MODAL 2: EDITAR NOMBRE --- */}
+      <Modal visible={showEditNameModal} transparent animationType="fade" onRequestClose={() => setShowEditNameModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+          <View style={styles.alertBox}>
+            <Text style={styles.alertTitle}>Editar Nombre</Text>
+            <TextInput
+              value={groupName}
+              onChangeText={setGroupName}
+              style={styles.alertInput}
+            />
+            <View style={styles.alertActions}>
+              <Pressable onPress={() => setShowEditNameModal(false)} style={styles.alertButtonCancel}>
+                <Text style={styles.alertButtonTextCancel}>Cancelar</Text>
+              </Pressable>
+              <Pressable onPress={handleUpdateGroupName} style={styles.alertButtonConfirm}>
+                <Text style={styles.alertButtonTextConfirm}>Guardar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* --- MODAL 3: OPCIONES --- */}
       <Modal visible={showOptionsModal} transparent animationType="fade" onRequestClose={() => setShowOptionsModal(false)}>
-        <Pressable className="flex-1 bg-black/40 justify-end" onPress={() => setShowOptionsModal(false)}>
-          <View className="bg-white rounded-t-[32px] p-6 pb-10">
-            <View className="w-12 h-1.5 bg-slate-200 rounded-full self-center mb-6" />
-            <Text className="text-xl font-bold text-slate-900 mb-6 text-center">Opciones del Grupo</Text>
-            <Pressable onPress={() => { setShowOptionsModal(false); setShowEditNameModal(true); }} className="flex-row items-center p-4 bg-slate-50 rounded-2xl mb-3 border border-slate-100"><Ionicons name="pencil" size={22} color="#475569" style={{ marginRight: 12 }} /><Text className="text-base font-bold text-slate-700">Editar Nombre</Text></Pressable>
-            <Pressable onPress={handleDeleteGroup} className="flex-row items-center p-4 bg-red-50 rounded-2xl border border-red-100"><Ionicons name="trash" size={22} color="#DC2626" style={{ marginRight: 12 }} /><Text className="text-base font-bold text-red-600">Eliminar Grupo</Text></Pressable>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowOptionsModal(false)}>
+          <View style={styles.actionSheet}>
+            <View style={styles.dragHandle} />
+            <Text style={styles.sheetTitle}>Opciones del Grupo</Text>
+
+            <Pressable onPress={() => { setShowOptionsModal(false); setShowEditNameModal(true); }} style={styles.sheetOption}>
+              <Ionicons name="pencil-outline" size={22} color={COLORS.textDark} />
+              <Text style={styles.sheetOptionText}>Editar Nombre</Text>
+            </Pressable>
+
+            <Pressable onPress={handleDeleteGroup} style={[styles.sheetOption, { borderBottomWidth: 0 }]}>
+              <Ionicons name="trash-outline" size={22} color={COLORS.danger} />
+              <Text style={[styles.sheetOptionText, { color: COLORS.danger }]}>Eliminar Grupo</Text>
+            </Pressable>
           </View>
         </Pressable>
       </Modal>
 
-      <Modal visible={showAddMemberModal} transparent animationType="slide" onRequestClose={() => setShowAddMemberModal(false)}>
-        <View className="flex-1 bg-white mt-20 rounded-t-[32px] shadow-2xl border-t border-slate-100">
-          <View className="p-6">
-            <View className="flex-row justify-between items-center mb-6">
-              <Text className="text-2xl font-bold text-slate-900">Añadir Atleta</Text>
-              <Pressable onPress={() => setShowAddMemberModal(false)} className="p-2 bg-slate-100 rounded-full"><Ionicons name="close" size={24} color="#64748B" /></Pressable>
-            </View>
-            <Text className="text-slate-500 mb-2 font-medium ml-1">Buscar por Documento</Text>
-            <View className="flex-row gap-3 mb-6 my-2">
-              <TextInput
-                value={searchDoc}
-                onChangeText={setSearchDoc}
-                placeholder="Ej. 100123456"
-                keyboardType="numeric"
-                placeholderTextColor="#9CA3AF"
-                style={[styles.safeInput, { flex: 1, marginBottom: 0 }]}
-              />
-
-              <Pressable
-                onPress={handleSearchAthlete}
-                className="bg-blue-600 w-14 rounded-xl items-center justify-center active:bg-blue-700 shadow-sm"
-              >
-                {searching ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Ionicons name="search" size={24} color="white" />
-                )}
-              </Pressable>
-            </View>
-
-            {searchError ? <View className="bg-red-50 p-4 rounded-xl flex-row items-center mb-4"><Ionicons name="alert-circle" size={20} color="#DC2626" style={{ marginRight: 8 }} /><Text className="text-red-600 font-medium flex-1">{searchError}</Text></View> : null}
-            {foundAthlete && (
-              <View className="bg-blue-50 border border-blue-100 p-5 rounded-2xl my-2 shadow-sm">
-                {/* Header */}
-                <View className="flex-row items-center mb-4">
-                  <View className="w-12 h-12 bg-blue-100 rounded-full items-center justify-center mr-4 shadow-sm">
-                    <Ionicons name="person" size={24} color="#2563EB" />
-                  </View>
-
-                  <View>
-                    <Text className="text-lg font-bold text-slate-900">
-                      {foundAthlete.nombre_completo}
-                    </Text>
-                    <Text className="text-slate-500 font-medium">
-                      Doc: {foundAthlete.no_documento}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Button */}
-                <Pressable
-                  onPress={handleAddFoundAthlete}
-                  className="bg-blue-600 h-12 rounded-xl flex-row items-center justify-center active:bg-blue-700 shadow-sm"
-                >
-                  <Ionicons
-                    name="add-circle-outline"
-                    size={20}
-                    color="white"
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text className="text-white font-bold text-base">
-                    Agregar al Grupo
-                  </Text>
-                </Pressable>
-              </View>
-
-            )}
-          </View>
-        </View>
-      </Modal>
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onClose={closeAlert}
+        onConfirm={alertConfig.onConfirm}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeInput: {
-    backgroundColor: '#F9FAFB',
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  safeArea: {
+    flex: 1,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+
+  // Header
+  header: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: COLORS.background,
+  },
+  navBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.cardBg,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: COLORS.borderColor,
+  },
+  groupTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: COLORS.textDark,
+    marginBottom: 8,
+  },
+  groupMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  groupMetaLabel: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    marginRight: 8,
+  },
+  codeBadge: {
+    backgroundColor: '#DBEAFE', // Blue 100
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  codeText: {
+    color: COLORS.primary,
+    fontWeight: 'bold',
+    fontSize: 12,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+
+  // Content
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
+  description: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+
+  // Tabs
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.cardBg,
     borderRadius: 16,
-    paddingHorizontal: 16,
+    padding: 4,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 12,
+  },
+  activeTab: {
+    backgroundColor: '#EFF6FF', // Blue 50
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+  },
+  activeTabText: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
+
+  // Actions
+  primaryButton: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     height: 52,
+    borderRadius: 16,
+    marginBottom: 16,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  primaryButtonText: {
+    color: 'white',
+    fontWeight: '700',
     fontSize: 16,
-    color: '#111827',
-    marginBottom: 0
-  }
+    marginLeft: 8,
+  },
+  sectionHeader: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textDark,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+
+  // Cards & Lists
+  card: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+  },
+  cardSelected: {
+    backgroundColor: '#FEF2F2', // Red 50
+    borderColor: '#FECACA', // Red 200
+  },
+  cardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textDark,
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  deadlineBadge: {
+    backgroundColor: '#FFF7ED', // Orange 50
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  deadlineText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#EA580C', // Orange 600
+  },
+
+  // Empty States
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+  },
+  emptyText: {
+    color: COLORS.textMuted,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+
+  // Selection Bar
+  selectionBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  selectionText: {
+    color: '#B91C1C',
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  deleteButton: {
+    backgroundColor: COLORS.danger,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  deleteButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+
+  // Modal Search
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderColor,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.textDark,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalBody: {
+    padding: 24,
+    flex: 1,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 48,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 16,
+    color: COLORS.textDark,
+    height: '100%',
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.inputBg,
+  },
+  resultInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  resultName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textDark,
+  },
+  resultDoc: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  addButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addedBadge: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  addedText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.success,
+  },
+
+  // Modal Alert/Options
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  alertBox: {
+    backgroundColor: 'white',
+    margin: 32,
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  alertTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  alertInput: {
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 48,
+    borderWidth: 1,
+    borderColor: COLORS.borderColor,
+    marginBottom: 20,
+  },
+  alertActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  alertButtonCancel: {
+    flex: 1,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: COLORS.inputBg,
+  },
+  alertButtonConfirm: {
+    flex: 1,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+  },
+  alertButtonTextCancel: { fontWeight: '600', color: COLORS.textMuted },
+  alertButtonTextConfirm: { fontWeight: '600', color: 'white' },
+
+  actionSheet: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#CBD5E1',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textDark,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  sheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.inputBg,
+  },
+  sheetOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: COLORS.textDark,
+    marginLeft: 12,
+  },
 });

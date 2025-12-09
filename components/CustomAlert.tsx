@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, Modal, Pressable } from "react-native";
+import { View, Text, Modal, Pressable, StyleSheet } from "react-native";
 import { CheckCircle, AlertCircle, XCircle, Info } from "lucide-react-native";
 
 export type AlertType = "success" | "error" | "warning" | "info";
@@ -11,6 +11,9 @@ interface CustomAlertProps {
   type?: AlertType;
   onClose: () => void;
   buttonText?: string;
+  // Nuevas props para manejo de confirmación
+  onConfirm?: () => void;
+  cancelText?: string;
 }
 
 export default function CustomAlert({
@@ -19,39 +22,48 @@ export default function CustomAlert({
   message,
   type = "info",
   onClose,
-  buttonText = "Entendido"
+  buttonText = "Entendido",
+  onConfirm,
+  cancelText = "Cancelar"
 }: CustomAlertProps) {
   
-  // Configuración de colores e iconos según el tipo
+  // Configuración de colores según el tipo
   const config = {
     success: {
       icon: CheckCircle,
-      bgColor: "bg-green-100",
+      bgColor: "#DCFCE7", // green-100
       iconColor: "#16A34A", // green-600
-      btnColor: "bg-green-600",
+      btnColor: "#16A34A",
     },
     error: {
       icon: XCircle,
-      bgColor: "bg-red-100",
+      bgColor: "#FEE2E2", // red-100
       iconColor: "#DC2626", // red-600
-      btnColor: "bg-red-600",
+      btnColor: "#DC2626",
     },
     warning: {
       icon: AlertCircle,
-      bgColor: "bg-orange-100",
-      iconColor: "#EA580C", // orange-600
-      btnColor: "bg-orange-500",
+      bgColor: "#FFEDD5", // orange-100
+      iconColor: "#ea470cff", // orange-600
+      btnColor: "#F97316", // orange-500
     },
     info: {
       icon: Info,
-      bgColor: "bg-blue-100",
+      bgColor: "#DBEAFE", // blue-100
       iconColor: "#2563EB", // blue-600
-      btnColor: "bg-blue-600",
+      btnColor: "#2563EB",
     },
   };
 
   const Style = config[type];
   const Icon = Style.icon;
+
+  const handleConfirm = () => {
+    if (onConfirm) {
+        onConfirm();
+    }
+    onClose();
+  };
 
   return (
     <Modal
@@ -61,32 +73,128 @@ export default function CustomAlert({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View className="flex-1 justify-center items-center bg-black/50 px-6">
-        <View className="bg-white w-full max-w-sm rounded-3xl p-6 items-center shadow-xl">
+      <View style={styles.overlay}>
+        <View style={styles.alertContainer}>
           
           {/* Icono */}
-          <View className={`w-16 h-16 rounded-full items-center justify-center mb-4 ${Style.bgColor}`}>
+          <View style={[styles.iconWrapper, { backgroundColor: Style.bgColor }]}>
             <Icon size={32} color={Style.iconColor} />
           </View>
 
           {/* Textos */}
-          <Text className="text-xl font-bold text-slate-900 text-center mb-2">
-            {title}
-          </Text>
-          <Text className="text-base text-slate-500 text-center mb-6 leading-6">
-            {message}
-          </Text>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.message}>{message}</Text>
 
-          {/* Botón */}
-          <Pressable
-            onPress={onClose}
-            className={`w-full py-3.5 rounded-2xl items-center active:opacity-90 ${Style.btnColor}`}
-          >
-            <Text className="text-white font-bold text-base">{buttonText}</Text>
-          </Pressable>
+          {/* Área de Botones */}
+          <View style={styles.buttonRow}>
+            
+            {/* Botón Cancelar (Solo se muestra si hay onConfirm) */}
+            {onConfirm && (
+                <Pressable
+                    onPress={onClose}
+                    style={({pressed}) => [
+                        styles.button, 
+                        styles.cancelButton,
+                        pressed && styles.buttonPressed
+                    ]}
+                >
+                    <Text style={styles.cancelButtonText}>{cancelText}</Text>
+                </Pressable>
+            )}
+
+            {/* Botón Principal (Acción o Cerrar) */}
+            <Pressable
+                onPress={handleConfirm}
+                style={({pressed}) => [
+                    styles.button, 
+                    { backgroundColor: Style.btnColor },
+                    // Si hay dos botones, usamos flex:1, si no, width 100%
+                    onConfirm ? { flex: 1 } : { width: '100%' },
+                    pressed && styles.buttonPressed
+                ]}
+            >
+                <Text style={styles.buttonText}>{buttonText}</Text>
+            </Pressable>
+
+          </View>
 
         </View>
       </View>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+    overlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 24,
+    },
+    alertContainer: {
+        backgroundColor: 'white',
+        width: '100%',
+        maxWidth: 340,
+        borderRadius: 24,
+        padding: 24,
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+        elevation: 10,
+    },
+    iconWrapper: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+    },
+    title: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: '#0F172A', // slate-900
+        textAlign: 'center',
+        marginBottom: 8,
+    },
+    message: {
+        fontSize: 16,
+        color: '#64748B', // slate-500
+        textAlign: 'center',
+        marginBottom: 24,
+        lineHeight: 24,
+    },
+    buttonRow: {
+        width: '100%',
+        flexDirection: 'row',
+        gap: 12, // Espacio entre botones
+        justifyContent: 'center',
+    },
+    button: {
+        paddingVertical: 14,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    buttonPressed: {
+        opacity: 0.9, 
+        transform: [{ scale: 0.98 }]
+    },
+    cancelButton: {
+        flex: 1,
+        backgroundColor: '#F1F5F9', // Slate 100
+    },
+    buttonText: {
+        color: 'white',
+        fontWeight: '700',
+        fontSize: 16,
+    },
+    cancelButtonText: {
+        color: '#64748B', // Slate 500
+        fontWeight: '700',
+        fontSize: 16,
+    }
+});

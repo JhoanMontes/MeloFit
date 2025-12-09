@@ -1,115 +1,313 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
-    View, Text, ScrollView, Pressable, StatusBar, Modal, Alert, TouchableOpacity
+    View, 
+    Text, 
+    ScrollView, 
+    Pressable, 
+    StatusBar, 
+    Modal, 
+    Alert, 
+    TouchableOpacity, 
+    ActivityIndicator,
+    StyleSheet
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native"; // <--- IMPORTANTE
 import { EntrenadorStackParamList } from "../../navigation/types";
+import { supabase } from "../../lib/supabase";
+
+// --- CONSTANTES DE DISEÑO ---
+const COLORS = {
+  primary: "#2563EB",
+  background: "#F8FAFC",
+  cardBg: "#FFFFFF",
+  textDark: "#0F172A",
+  textMuted: "#64748B",
+  borderColor: "#E2E8F0",
+  success: "#10B981",
+  successBg: "#DCFCE7",
+  successText: "#166534",
+  danger: "#EF4444",
+  dangerBg: "#FEE2E2",
+  dangerText: "#991B1B",
+  warning: "#F59E0B",
+  orangeBg: "#FFF7ED",
+  orangeText: "#C2410C",
+};
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "TestAssignmentDetail">;
 
-// 1. DEFINICIÓN DE INTERFAZ PARA EVITAR ERRORES DE TIPO
+interface TestRange {
+    id: number;
+    nombre: string;
+    min: number;
+    max: number;
+    color: string;
+}
+
 interface Participant {
     id: number;
     name: string;
     status: 'pending' | 'completed';
     result: string | null;
+    result_id: number | null;
     level: string | null;
     obs: string;
     physical: {
-        weight?: string;
-        height?: string;
-        age?: string; // Ahora usamos Edad en vez de Grasa
+        weight?: string | null;
+        height?: string | null;
+        age?: string | null;
     };
     isDeficient: boolean;
 }
 
-// 2. DATOS MOCK TIPADOS
-const initialParticipants: Participant[] = [
-    { id: 1, name: 'Alex Johnson', status: 'pending', result: null, level: null, obs: '', physical: {}, isDeficient: false },
-    {
-        id: 2,
-        name: 'Maria Garcia',
-        status: 'completed',
-        result: '2400 m',
-        level: 'Avanzado',
-        obs: 'Excelente resistencia aeróbica, mantuvo el ritmo constante. Superó su marca anterior.',
-        physical: { weight: '62kg', height: '1.68m', age: '19 años' },
-        isDeficient: false
-    },
-    { id: 3, name: 'David Lee', status: 'pending', result: null, level: null, obs: '', physical: {}, isDeficient: false },
-    {
-        id: 4,
-        name: 'Sarah Miller',
-        status: 'completed',
-        result: '1400 m',
-        level: 'Bajo',
-        obs: 'Se fatigó muy rápido a los 5 minutos. Técnica de carrera deficiente.',
-        physical: { weight: '70kg', height: '1.65m', age: '21 años' },
-        isDeficient: true // Habilita el botón de reinicio
-    },
-    { id: 5, name: 'Jhonny Diaz', status: 'pending', result: null, level: null, obs: '', physical: {}, isDeficient: false },
-];
-
 export default function TestAssignmentDetail({ navigation, route }: Props) {
-    const { testName, groupName, initialTab } = route.params || { testName: 'Test de Cooper', groupName: 'Grupo A' };
+    const { testName = "Test", groupName = "Grupo", assignmentId, initialTab } = route.params || {};
 
-    // Estado tipado correctamente con <Participant[]>
-    const [participants, setParticipants] = useState<Participant[]>(initialParticipants);
+    const [participants, setParticipants] = useState<Participant[]>([]);
+    const [loading, setLoading] = useState<boolean>(true);
     const [activeTab, setActiveTab] = useState<'pending' | 'completed'>(initialTab || 'pending');
 
-    // Estado para el Modal
     const [selectedAthlete, setSelectedAthlete] = useState<Participant | null>(null);
     const [modalVisible, setModalVisible] = useState(false);
+    
+    const [testLevels, setTestLevels] = useState<TestRange[]>([]);
+    const [loadingLevels, setLoadingLevels] = useState(true);
 
-    // Listas filtradas
+    // Helpers
+    const calcAge = (birth?: string | null) => {
+        if (!birth) return null;
+        try {
+            const bd = new Date(birth);
+            const diff = Date.now() - bd.getTime();
+            const age = Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
+            return `${age} años`;
+        } catch {
+            return null;
+        }
+    };
+    
+    const calculateLevel = useCallback((value: string, levels: TestRange[]): string | null => {
+        const val = parseFloat(value);
+        if (isNaN(val) || !Array.isArray(levels) || levels.length === 0) return null;
+        const found = levels.find(r => val >= r.min && val <= r.max);
+        return found ? found.nombre : 'Fuera de Rango';
+    }, []);
+
+    // 1. Cargar Niveles (Esto solo necesita correr una vez al montar)
+    useEffect(() => {
+        const fetchLevels = async () => {
+            if (!assignmentId) return;
+            try {
+                const { data: assignmentData, error: assignError } = await supabase
+                    .from('prueba_asignada')
+                    .select('prueba_id')
+                    .eq('id', assignmentId)
+                    .single();
+                
+                if (assignError || !assignmentData) throw assignError;
+
+                const { data: testData, error: testError } = await supabase
+                    .from('prueba')
+                    .select('niveles')
+                    .eq('id', assignmentData.prueba_id)
+                    .single();
+
+                if (testError || !testData) throw testError;
+
+                const loadedLevels: TestRange[] = Array.isArray(testData.niveles) ? (testData.niveles as TestRange[]) : [];
+                setTestLevels(loadedLevels);
+
+            } catch (err) {
+                console.error("Error fetching levels:", err);
+            } finally {
+                setLoadingLevels(false);
+            }
+        };
+        fetchLevels();
+    }, [assignmentId]);
+
+    // 2. Cargar Participantes (Con useFocusEffect para actualizar al volver)
+    useFocusEffect(
+        useCallback(() => {
+            let isActive = true;
+
+            const loadParticipants = async () => {
+                // Esperamos a que los niveles carguen para poder calcular bien el status
+                if (loadingLevels) return;
+
+                setLoading(true);
+                try {
+                    if (!assignmentId) {
+                        Alert.alert("Error", "Falta ID de asignación.");
+                        return;
+                    }
+
+                    // A. Obtener IDs de atletas
+                    const { data: assignedRows, error: assignedErr } = await supabase
+                        .from("prueba_asignada_has_atleta")
+                        .select("atleta_no_documento")
+                        .eq("prueba_asignada_id", assignmentId);
+
+                    if (assignedErr) throw assignedErr;
+                    if (!assignedRows || assignedRows.length === 0) {
+                        if (isActive) setParticipants([]);
+                        return;
+                    }
+
+                    const athleteIds = Array.from(new Set(assignedRows.map((r: any) => r.atleta_no_documento)));
+
+                    // B. Obtener Nombres
+                    const { data: usuarios } = await supabase
+                        .from("usuario")
+                        .select("no_documento, nombre_completo")
+                        .in("no_documento", athleteIds);
+
+                    // C. Obtener Datos Físicos
+                    const { data: atletas } = await supabase
+                        .from("atleta")
+                        .select("no_documento, estatura, peso, fecha_nacimiento")
+                        .in("no_documento", athleteIds);
+
+                    // D. Obtener Resultados y Comentarios
+                    const { data: resultados } = await supabase
+                        .from("resultado_prueba")
+                        .select(`id, atleta_no_documento, valor, comentario ( mensaje )`)
+                        .eq("prueba_asignada_id", assignmentId);
+
+                    // E. Mapeo Eficiente
+                    const userMap: Record<number, any> = {};
+                    (usuarios || []).forEach((u: any) => { userMap[Number(u.no_documento)] = u; });
+
+                    const atletaMap: Record<number, any> = {};
+                    (atletas || []).forEach((a: any) => { atletaMap[Number(a.no_documento)] = a; });
+                    
+                    const resultadoMap: Record<number, any> = {};
+                    (resultados || []).forEach((r: any) => { resultadoMap[Number(r.atleta_no_documento)] = r; });
+
+                    // F. Construcción del Objeto Participant
+                    const built: Participant[] = assignedRows.map((row: any) => {
+                        const id = Number(row.atleta_no_documento);
+                        const u = userMap[id];
+                        const at = atletaMap[id];
+                        const res = resultadoMap[id];
+                        
+                        const fullName = u?.nombre_completo ?? `Atleta ${id}`;
+                        const resultVal = res?.valor ?? null;
+                        const resultId = res?.id ?? null;
+
+                        const level = resultVal ? calculateLevel(resultVal, testLevels) : null;
+                        const obs = res?.comentario?.[0]?.mensaje ?? ''; 
+                        
+                        const isDeficient = level ? level.toLowerCase().includes('principiante') || level.toLowerCase().includes('bajo') : false;
+
+                        return {
+                            id,
+                            name: fullName,
+                            status: resultVal ? 'completed' : 'pending',
+                            result: resultVal,
+                            result_id: resultId,
+                            level,
+                            obs,
+                            physical: {
+                                weight: at?.peso ? `${at.peso}kg` : null,
+                                height: at?.estatura ? `${at.estatura}m` : null,
+                                age: calcAge(at?.fecha_nacimiento ?? null)
+                            },
+                            isDeficient
+                        } as Participant;
+                    });
+
+                    if (isActive) {
+                        setParticipants(built);
+                        // Solo establecemos el tab inicial si no hay interacción previa o se pide explícitamente
+                        if (!initialTab && activeTab === 'pending') { 
+                            // Lógica opcional: si todos están listos, cambiar a completed automáticamente
+                            // const hasPending = built.some(p => p.status === 'pending');
+                            // if (!hasPending) setActiveTab('completed');
+                        }
+                    }
+                } catch (err) {
+                    console.error(err);
+                } finally {
+                    if (isActive) setLoading(false);
+                }
+            };
+
+            loadParticipants();
+
+            return () => { isActive = false; };
+        }, [assignmentId, loadingLevels, calculateLevel, testLevels, activeTab]) // Dependencias clave
+    );
+
+    // Filtros
     const pendingList = participants.filter(p => p.status === 'pending');
     const completedList = participants.filter(p => p.status === 'completed');
 
-    // Abrir modal
     const openDetails = (athlete: Participant) => {
         setSelectedAthlete(athlete);
         setModalVisible(true);
     };
 
-    // Navegar a evaluar
     const handleEvaluate = (athlete: Participant) => {
         navigation.navigate('SendFeedback', {
-            result: { athleteName: athlete.name, test: testName }
+            result: {
+                athleteId: athlete.id,
+                athleteName: athlete.name,
+                test: testName,
+                assignmentId,
+                weight: athlete.physical.weight,
+                height: athlete.physical.height,
+                age: athlete.physical.age
+            }
         });
     };
 
-    // 3. LÓGICA DE REINICIO CORREGIDA
-    const handleResetTest = () => {
+    const handleResetTest = async () => {
         if (!selectedAthlete) return;
 
         Alert.alert(
             "Reiniciar Prueba",
-            `¿Deseas invalidar el resultado de ${selectedAthlete.name} y enviarlo a pendientes?`,
+            `¿Invalidar resultado de ${selectedAthlete.name}? Se borrará el historial actual.`,
             [
                 { text: "Cancelar", style: "cancel" },
                 {
                     text: "Sí, reiniciar",
                     style: 'destructive',
-                    onPress: () => {
-                        // Actualizamos la lista inmutanblemente
-                        const updatedList = participants.map(p =>
-                            p.id === selectedAthlete.id
-                                ? {
-                                    ...p,
-                                    status: 'pending',
-                                    result: null,
-                                    level: null,
-                                    isDeficient: false,
-                                    // physical: {} // Descomenta si quieres borrar los datos físicos también
-                                } as Participant
-                                : p
-                        );
+                    onPress: async () => {
+                        try {
+                            const { error } = await supabase
+                                .from('resultado_prueba')
+                                .delete()
+                                .eq('prueba_asignada_id', assignmentId)
+                                .eq('atleta_no_documento', selectedAthlete.id);
 
-                        setParticipants(updatedList);
-                        setModalVisible(false);
-                        setActiveTab('pending'); // Movemos la vista a pendientes automáticamente
+                            if (error) throw error;
+
+                            const updated = participants.map(p => {
+                                if (p.id === selectedAthlete.id) {
+                                    return { 
+                                        ...p, 
+                                        status: 'pending' as const, 
+                                        result: null, 
+                                        result_id: null, 
+                                        level: null, 
+                                        obs: '', 
+                                        isDeficient: false 
+                                    };
+                                }
+                                return p;
+                            });
+                            
+                            setParticipants(updated);
+                            setModalVisible(false);
+                            setActiveTab('pending');
+                        } catch (err) {
+                            console.error(err);
+                            Alert.alert("Error", "No se pudo reiniciar.");
+                        }
                     }
                 }
             ]
@@ -117,7 +315,7 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
     };
 
     return (
-        <View className="flex-1 bg-[#F5F5F7]">
+        <View style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
             {/* --- MODAL DETALLE (BOTTOM SHEET) --- */}
@@ -127,88 +325,75 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
                 visible={modalVisible}
                 onRequestClose={() => setModalVisible(false)}
             >
-                <View className="flex-1 bg-black/50 justify-end">
-                    <Pressable className="flex-1" onPress={() => setModalVisible(false)} />
-
-                    <View className="bg-white rounded-t-[32px] p-6 pb-10 shadow-2xl">
-                        {/* Indicador visual */}
-                        <View className="items-center mb-6">
-                            <View className="w-12 h-1.5 bg-gray-300 rounded-full" />
-                        </View>
+                <View style={styles.modalOverlay}>
+                    <Pressable style={{ flex: 1 }} onPress={() => setModalVisible(false)} />
+                    
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHandle} />
 
                         {selectedAthlete && (
-                            <>
-                                {/* Header del Modal */}
-                                <View className="flex-row justify-between items-start mb-6">
+                            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: '90%' }}>
+                                <View style={styles.modalHeaderRow}>
                                     <View>
-                                        <Text className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-1">Resultado Final</Text>
-                                        <Text className="text-2xl font-bold text-slate-900">{selectedAthlete.name}</Text>
+                                        <Text style={styles.modalLabel}>RESULTADO FINAL</Text>
+                                        <Text style={styles.modalTitle}>{selectedAthlete.name}</Text>
                                     </View>
-                                    <View className={`px-3 py-1 rounded-full ${selectedAthlete.isDeficient ? 'bg-red-100' : 'bg-green-100'}`}>
-                                        <Text className={`font-bold text-xs ${selectedAthlete.isDeficient ? 'text-red-700' : 'text-green-700'}`}>
-                                            {selectedAthlete.level}
+                                    
+                                    <View style={[
+                                        styles.statusBadge, 
+                                        selectedAthlete.isDeficient ? styles.statusBadgeDeficient : styles.statusBadgeSuccess
+                                    ]}>
+                                        <Text style={[
+                                            styles.statusBadgeText, 
+                                            selectedAthlete.isDeficient ? styles.statusTextDeficient : styles.statusTextSuccess
+                                        ]}>
+                                            {selectedAthlete.level ?? 'Nivel Desconocido'}
                                         </Text>
                                     </View>
                                 </View>
 
-                                {/* Resultado */}
-                                <View className="bg-slate-50 p-4 rounded-2xl border border-slate-100 items-center mb-6">
-                                    <Text className="text-slate-500 text-sm font-medium mb-1">Valor Registrado</Text>
-                                    <Text className="text-4xl font-extrabold text-slate-900 tracking-tight">{selectedAthlete.result}</Text>
+                                {/* Resultado Grande */}
+                                <View style={styles.bigResultBox}>
+                                    <Text style={styles.bigResultLabel}>Valor Registrado</Text>
+                                    <Text style={styles.bigResultValue}>{selectedAthlete.result ?? '-'}</Text>
                                 </View>
 
-                                {/* Grid Datos Físicos (CON EDAD) */}
-                                <Text className="font-bold text-slate-900 mb-3">Datos Físicos al evaluar</Text>
-                                <View className="flex-row justify-between mb-6 gap-3">
-                                    <View className="flex-1 bg-white border border-gray-200 p-3 rounded-xl items-center shadow-sm">
-                                        <Text className="text-xs text-gray-500 mb-1">Peso</Text>
-                                        <Text className="font-bold text-slate-800 text-lg">
-                                            {selectedAthlete.physical.weight || '-'}
-                                        </Text>
+                                <Text style={styles.sectionTitle}>Datos Físicos al evaluar</Text>
+                                <View style={styles.statsGrid}>
+                                    <View style={styles.statBox}>
+                                        <Text style={styles.statLabel}>PESO</Text>
+                                        <Text style={styles.statValue}>{selectedAthlete.physical.weight ?? '-'}</Text>
                                     </View>
-                                    <View className="flex-1 bg-white border border-gray-200 p-3 rounded-xl items-center shadow-sm">
-                                        <Text className="text-xs text-gray-500 mb-1">Altura</Text>
-                                        <Text className="font-bold text-slate-800 text-lg">
-                                            {selectedAthlete.physical.height || '-'}
-                                        </Text>
+                                    <View style={styles.statBox}>
+                                        <Text style={styles.statLabel}>ESTATURA</Text>
+                                        <Text style={styles.statValue}>{selectedAthlete.physical.height ?? '-'}</Text>
                                     </View>
-                                    <View className="flex-1 bg-white border border-gray-200 p-3 rounded-xl items-center shadow-sm">
-                                        <Text className="text-xs text-gray-500 mb-1">Edad</Text>
-                                        <Text className="font-bold text-slate-800 text-lg">
-                                            {selectedAthlete.physical.age || '-'}
-                                        </Text>
+                                    <View style={styles.statBox}>
+                                        <Text style={styles.statLabel}>EDAD</Text>
+                                        <Text style={styles.statValue}>{selectedAthlete.physical.age ?? '-'}</Text>
                                     </View>
                                 </View>
 
-                                {/* Observaciones */}
-                                <Text className="font-bold text-slate-900 mb-2">Observación del Entrenador</Text>
-                                <View className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-8">
-                                    <Text className="text-slate-700 italic leading-5">
-                                        "{selectedAthlete.obs || 'Sin observaciones.'}"
+                                <Text style={styles.sectionTitle}>Observación del Entrenador</Text>
+                                <View style={styles.obsBox}>
+                                    <Text style={styles.obsText}>
+                                        "{selectedAthlete.obs || 'Sin observaciones registradas.'}"
                                     </Text>
                                 </View>
 
-                                {/* Botones de Acción */}
-                                <View className="gap-3">
-                                    {/* Solo mostrar REINICIAR si es deficiente */}
+                                <View style={styles.modalActions}>
                                     {selectedAthlete.isDeficient && (
-                                        <TouchableOpacity
-                                            onPress={handleResetTest}
-                                            className="w-full bg-red-50 py-4 rounded-xl flex-row justify-center items-center border border-red-100 active:bg-red-100"
-                                        >
-                                            <Ionicons name="refresh-circle" size={24} color="#DC2626" style={{ marginRight: 8 }} />
-                                            <Text className="text-red-600 font-bold text-base">Reiniciar Prueba (Invalida)</Text>
+                                        <TouchableOpacity onPress={handleResetTest} style={styles.resetButton}>
+                                            <Ionicons name="refresh-circle" size={24} color={COLORS.danger} style={{ marginRight: 8 }} />
+                                            <Text style={styles.resetButtonText}>Reiniciar Prueba</Text>
                                         </TouchableOpacity>
                                     )}
 
-                                    <TouchableOpacity
-                                        onPress={() => setModalVisible(false)}
-                                        className="w-full bg-slate-900 py-4 rounded-xl items-center active:bg-slate-800 shadow-lg shadow-slate-300"
-                                    >
-                                        <Text className="text-white font-bold text-base">Cerrar</Text>
+                                    <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+                                        <Text style={styles.closeButtonText}>Cerrar</Text>
                                     </TouchableOpacity>
                                 </View>
-                            </>
+                            </ScrollView>
                         )}
                     </View>
                 </View>
@@ -216,136 +401,453 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
             {/* --- PANTALLA PRINCIPAL --- */}
             <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-
-                {/* HEADER */}
-                <View className="px-6 pt-4 pb-2">
-                    <View className="flex-row items-center mb-4">
-                        <Pressable onPress={() => navigation.goBack()} className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm border border-gray-100 active:bg-gray-50 mr-4">
-                            <Ionicons name="arrow-back" size={20} color="#111827" />
+                {/* Header */}
+                <View style={styles.header}>
+                    <View style={styles.navBar}>
+                        <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+                            <Ionicons name="arrow-back" size={20} color={COLORS.textDark} />
                         </Pressable>
-                        <View>
-                            <Text className="text-gray-500 text-xs font-bold uppercase tracking-wider">{groupName}</Text>
-                            <Text className="text-gray-900 text-2xl font-bold">{testName}</Text>
+                        
+                        <View style={{ flex: 1 }}> 
+                            <Text style={styles.headerSubtitle} numberOfLines={1}>
+                                {groupName}
+                            </Text>
+                            <Text 
+                                style={styles.headerTitle} 
+                                numberOfLines={2} 
+                                ellipsizeMode="tail"
+                            >
+                                {testName}
+                            </Text>
                         </View>
                     </View>
 
-                    {/* TABS */}
-                    <View className="flex-row bg-white p-1 rounded-2xl mb-4 border border-gray-100 shadow-sm">
-                        <Pressable onPress={() => setActiveTab('pending')} className={`flex-1 py-3 rounded-xl items-center justify-center ${activeTab === 'pending' ? 'bg-orange-50' : 'bg-transparent'}`}>
-                            <Text className={`font-bold text-sm ${activeTab === 'pending' ? 'text-orange-700' : 'text-gray-500'}`}>Faltan ({pendingList.length})</Text>
+                    {/* Tabs */}
+                    <View style={styles.tabContainer}>
+                        <Pressable 
+                            onPress={() => setActiveTab('pending')} 
+                            style={[styles.tab, activeTab === 'pending' && styles.activeTab]}
+                        >
+                            <Text style={[styles.tabText, activeTab === 'pending' && styles.activeTabText]}>
+                                Faltan ({pendingList.length})
+                            </Text>
                         </Pressable>
-                        <Pressable onPress={() => setActiveTab('completed')} className={`flex-1 py-3 rounded-xl items-center justify-center ${activeTab === 'completed' ? 'bg-emerald-50' : 'bg-transparent'}`}>
-                            <Text className={`font-bold text-sm ${activeTab === 'completed' ? 'text-emerald-700' : 'text-gray-500'}`}>Listos ({completedList.length})</Text>
+                        <Pressable 
+                            onPress={() => setActiveTab('completed')} 
+                            style={[styles.tab, activeTab === 'completed' && styles.activeTab]}
+                        >
+                            <Text style={[styles.tabText, activeTab === 'completed' && styles.activeTabText]}>
+                                Listos ({completedList.length})
+                            </Text>
                         </Pressable>
                     </View>
                 </View>
 
-                <ScrollView className="flex-1 px-6" contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
-
-                    {activeTab === 'pending' ? (
-                        // --- LISTA PENDIENTES ---
-                        <View className="space-y-3">
-                            {pendingList.map((item) => (
-                                <View
-                                    key={item.id}
-                                    className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex-row justify-between items-center my-2"
-                                >
-                                    {/* Left side */}
-                                    <View className="flex-row items-center gap-3">
-                                        <View className="w-11 h-11 bg-gray-100 rounded-full items-center justify-center shadow-sm">
-                                            <Text className="font-bold text-gray-600 text-base">
-                                                {item.name.charAt(0)}
-                                            </Text>
-                                        </View>
-
-                                        <Text className="font-semibold text-slate-900 text-base">
-                                            {item.name}
-                                        </Text>
-                                    </View>
-
-                                    {/* Right side: button */}
-                                    <Pressable
-                                        onPress={() => handleEvaluate(item)}
-                                        className="bg-blue-600 px-4 py-2 rounded-xl active:bg-blue-700 shadow-sm"
-                                    >
-                                        <Text className="text-white text-xs font-bold tracking-wide">
-                                            Evaluar
-                                        </Text>
-                                    </Pressable>
-                                </View>
-                            ))}
-
-                            {pendingList.length === 0 && (
-                                <View className="items-center justify-center mt-10 opacity-50">
-                                    <Ionicons name="checkmark-done-circle-outline" size={60} color="#9CA3AF" />
-                                    <Text className="text-gray-400 mt-2 font-medium">¡Todos evaluados!</Text>
-                                </View>
-                            )}
+                {/* Contenido Scroll */}
+                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    {loading || loadingLevels ? (
+                        <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="large" color={COLORS.primary} />
+                            <Text style={styles.loadingText}>Cargando datos...</Text>
                         </View>
-
-
                     ) : (
-                        // --- LISTA COMPLETADOS ---
-                        <View className="space-y-3">
-                            {completedList.map((item) => (
-                                <TouchableOpacity
-                                    key={item.id}
-                                    onPress={() => openDetails(item)}
-                                    className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm active:bg-slate-50 my-2"
-                                >
-                                    {/* Top Row */}
-                                    <View className="flex-row justify-between items-center mb-1">
-                                        <View className="flex-row items-center gap-3">
-                                            <View
-                                                className={`w-11 h-11 rounded-full items-center justify-center shadow-sm
-                        ${item.isDeficient ? 'bg-red-100' : 'bg-emerald-100'}`}
+                        <>
+                            {activeTab === 'pending' ? (
+                                <View>
+                                    {pendingList.length === 0 ? (
+                                        <View style={styles.emptyState}>
+                                            <Ionicons name="checkmark-done-circle-outline" size={60} color={COLORS.borderColor} />
+                                            <Text style={styles.emptyText}>¡Todos evaluados!</Text>
+                                        </View>
+                                    ) : (
+                                        pendingList.map((item) => (
+                                            <View key={item.id} style={styles.card}>
+                                                <View style={styles.cardLeft}>
+                                                    <View style={styles.avatar}>
+                                                        <Text style={styles.avatarText}>{item.name.charAt(0)}</Text>
+                                                    </View>
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+                                                    </View>
+                                                </View>
+
+                                                <Pressable onPress={() => handleEvaluate(item)} style={styles.actionButton}>
+                                                    <Text style={styles.actionButtonText}>Evaluar</Text>
+                                                </Pressable>
+                                            </View>
+                                        ))
+                                    )}
+                                </View>
+                            ) : (
+                                <View>
+                                    {completedList.length === 0 ? (
+                                        <View style={styles.emptyState}>
+                                            <Text style={styles.emptyText}>No hay resultados aún.</Text>
+                                        </View>
+                                    ) : (
+                                        completedList.map((item) => (
+                                            <TouchableOpacity 
+                                                key={item.id} 
+                                                onPress={() => openDetails(item)}
+                                                style={styles.card}
                                             >
-                                                {item.isDeficient ? (
-                                                    <Ionicons name="alert" size={20} color="#DC2626" />
-                                                ) : (
-                                                    <Ionicons name="checkmark" size={20} color="#059669" />
-                                                )}
-                                            </View>
+                                                <View style={styles.cardLeft}>
+                                                    <View style={[
+                                                        styles.avatar, 
+                                                        item.isDeficient ? styles.avatarDeficient : styles.avatarSuccess
+                                                    ]}>
+                                                        <Ionicons 
+                                                            name={item.isDeficient ? "alert" : "checkmark"} 
+                                                            size={18} 
+                                                            color={item.isDeficient ? COLORS.danger : COLORS.success} 
+                                                        />
+                                                    </View>
 
-                                            <View>
-                                                <Text className="font-semibold text-slate-900 text-base leading-tight">
-                                                    {item.name}
-                                                </Text>
-                                                <Text
-                                                    className={`text-[11px] mt-0.5 ${item.isDeficient
-                                                        ? 'text-red-600 font-semibold'
-                                                        : 'text-slate-500'
-                                                        }`}
-                                                >
-                                                    Nivel: {item.level}
-                                                </Text>
-                                            </View>
-                                        </View>
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+                                                        <Text style={[
+                                                            styles.cardLevel,
+                                                            item.isDeficient ? { color: COLORS.danger } : { color: COLORS.textMuted }
+                                                        ]}>
+                                                            Nivel: <Text style={{fontWeight: '700'}}>{item.level ?? '-'}</Text>
+                                                        </Text>
+                                                    </View>
+                                                </View>
 
-                                        <View className="items-end">
-                                            <Text className="font-extrabold text-slate-900 text-lg leading-none">
-                                                {item.result}
-                                            </Text>
-                                            <Text className="text-[10px] text-blue-600 font-bold mt-1">
-                                                Ver detalle
-                                            </Text>
-                                        </View>
-                                    </View>
-                                </TouchableOpacity>
-                            ))}
-
-                            {completedList.length === 0 && (
-                                <Text className="text-center text-gray-400 mt-10 italic">
-                                    Aún no has evaluado a nadie.
-                                </Text>
+                                                <View style={{alignItems: 'flex-end', marginLeft: 8}}>
+                                                    <Text style={styles.resultValueSmall}>{item.result ?? '-'}</Text>
+                                                    <Text style={styles.linkText}>Ver detalle</Text>
+                                                </View>
+                                            </TouchableOpacity>
+                                        ))
+                                    )}
+                                </View>
                             )}
-                        </View>
-
-
+                        </>
                     )}
-
                 </ScrollView>
             </SafeAreaView>
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: COLORS.background,
+    },
+    // Header
+    header: {
+        paddingHorizontal: 24,
+        paddingTop: 16,
+        paddingBottom: 8,
+    },
+    navBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    backButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: COLORS.cardBg,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.borderColor,
+        marginRight: 16,
+    },
+    headerTitle: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: COLORS.textDark,
+    },
+    headerSubtitle: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: COLORS.textMuted,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+
+    // Tabs
+    tabContainer: {
+        flexDirection: 'row',
+        backgroundColor: COLORS.cardBg,
+        borderRadius: 16,
+        padding: 4,
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: COLORS.borderColor,
+    },
+    tab: {
+        flex: 1,
+        paddingVertical: 10,
+        alignItems: 'center',
+        borderRadius: 12,
+    },
+    activeTab: {
+        backgroundColor: '#EFF6FF',
+    },
+    tabText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.textMuted,
+    },
+    activeTabText: {
+        color: COLORS.primary,
+        fontWeight: '700',
+    },
+
+    // Content & Cards
+    scrollContent: {
+        paddingHorizontal: 24,
+        paddingBottom: 100,
+        paddingTop: 16,
+    },
+    card: {
+        backgroundColor: COLORS.cardBg,
+        padding: 16,
+        borderRadius: 16,
+        marginBottom: 12,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.borderColor,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 1,
+    },
+    cardLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        flex: 1,
+    },
+    avatar: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#F1F5F9',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    avatarText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: COLORS.textMuted,
+    },
+    avatarSuccess: { backgroundColor: COLORS.successBg },
+    avatarDeficient: { backgroundColor: COLORS.dangerBg },
+    
+    cardName: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: COLORS.textDark,
+    },
+    cardLevel: {
+        fontSize: 12,
+        marginTop: 2,
+    },
+    
+    // Actions / Buttons inside cards
+    actionButton: {
+        backgroundColor: COLORS.primary,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 10,
+    },
+    actionButtonText: {
+        color: 'white',
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    resultValueSmall: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: COLORS.textDark,
+    },
+    linkText: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: COLORS.primary,
+        marginTop: 4,
+    },
+
+    // Loading & Empty
+    loadingContainer: {
+        alignItems: 'center',
+        marginTop: 40,
+    },
+    loadingText: {
+        color: COLORS.textMuted,
+        marginTop: 8,
+    },
+    emptyState: {
+        alignItems: 'center',
+        marginTop: 40,
+        opacity: 0.6,
+    },
+    emptyText: {
+        color: COLORS.textMuted,
+        fontWeight: '500',
+        marginTop: 8,
+    },
+
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: COLORS.cardBg,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        padding: 24,
+        paddingBottom: 40,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+        elevation: 10,
+        maxHeight: '85%',
+    },
+    modalHandle: {
+        width: 48,
+        height: 5,
+        backgroundColor: '#E2E8F0',
+        borderRadius: 3,
+        alignSelf: 'center',
+        marginBottom: 24,
+    },
+    modalHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: 24,
+    },
+    modalLabel: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: COLORS.textMuted,
+        marginBottom: 4,
+    },
+    modalTitle: {
+        fontSize: 22,
+        fontWeight: '800',
+        color: COLORS.textDark,
+    },
+    statusBadge: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+    },
+    statusBadgeSuccess: { backgroundColor: COLORS.successBg },
+    statusBadgeDeficient: { backgroundColor: COLORS.dangerBg },
+    statusBadgeText: { fontSize: 12, fontWeight: '700' },
+    statusTextSuccess: { color: COLORS.successText },
+    statusTextDeficient: { color: COLORS.dangerText },
+
+    bigResultBox: {
+        backgroundColor: '#F8FAFC',
+        padding: 16,
+        borderRadius: 16,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.borderColor,
+        marginBottom: 24,
+    },
+    bigResultLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: COLORS.textMuted,
+        marginBottom: 4,
+    },
+    bigResultValue: {
+        fontSize: 36,
+        fontWeight: '900',
+        color: COLORS.textDark,
+    },
+
+    sectionTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: COLORS.textDark,
+        marginBottom: 12,
+    },
+    statsGrid: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 24,
+    },
+    statBox: {
+        flex: 1,
+        backgroundColor: COLORS.cardBg,
+        borderWidth: 1,
+        borderColor: COLORS.borderColor,
+        borderRadius: 12,
+        padding: 12,
+        alignItems: 'center',
+    },
+    statLabel: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: COLORS.textMuted,
+        marginBottom: 4,
+    },
+    statValue: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: COLORS.textDark,
+    },
+    obsBox: {
+        backgroundColor: '#EFF6FF',
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 32,
+        borderWidth: 1,
+        borderColor: '#DBEAFE',
+    },
+    obsText: {
+        fontSize: 14,
+        fontStyle: 'italic',
+        color: '#1E40AF',
+        lineHeight: 20,
+    },
+
+    modalActions: {
+        gap: 12,
+    },
+    resetButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.dangerBg,
+        paddingVertical: 14,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#FECACA',
+    },
+    resetButtonText: {
+        color: COLORS.dangerText,
+        fontWeight: '700',
+        fontSize: 14,
+    },
+    closeButton: {
+        backgroundColor: COLORS.textDark,
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+    closeButtonText: {
+        color: 'white',
+        fontWeight: '700',
+        fontSize: 16,
+    },
+});

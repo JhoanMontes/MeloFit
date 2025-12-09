@@ -1,272 +1,771 @@
 import React, { useState, useEffect } from "react";
 import { 
-  View, 
-  Text, 
-  TextInput, 
-  Pressable, 
-  ScrollView, 
-  StatusBar,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Alert
+    View, 
+    Text, 
+    TextInput, 
+    Pressable, 
+    ScrollView, 
+    StatusBar,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { EntrenadorStackParamList } from "../../navigation/types";
+import { supabase } from "../../lib/supabase";
+
+// Importamos el componente CustomAlert
+import CustomAlert, { AlertType } from "../../components/CustomAlert"; // Asegúrate que la ruta sea correcta
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "SendFeedback">;
 
-// --- MOCK DE NIVELES DE LA PRUEBA (Referencia para el entrenador) ---
-const testRangesMock = [
-  { id: 1, label: 'Principiante', min: 0, max: 10, color: 'text-gray-600', bg: 'bg-gray-100', border: 'border-gray-200' },
-  { id: 2, label: 'Intermedio', min: 11, max: 20, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
-  { id: 3, label: 'Avanzado', min: 21, max: 30, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' },
-  { id: 4, label: 'Elite', min: 31, max: 999, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-];
+// --- CONSTANTES DE DISEÑO ---
+const COLORS = {
+  primary: "#2563EB", 
+  background: "#F5F5F7",
+  cardBg: "#FFFFFF",
+  textDark: "#0F172A",
+  textMuted: "#64748B",
+  border: "#E2E8F0",
+  success: "#10B981",
+  inputBg: "#F8FAFC",
+};
 
-export default function SendFeedback({ navigation, route }: Props) {
-  const { result } = route.params || {};
-  
-  // DATOS DEL ATLETA (Contexto para el entrenador)
-  const athleteData = {
-    name: result?.athleteName || "Jhonny Diaz",
-    weight: "74 kg", 
-    height: "1.78 m",
-    age: "22 años"
-  };
-
-  const testName = result?.test || "Prueba";
-
-  const [metricValue, setMetricValue] = useState('');
-  const [comments, setComments] = useState('');
-  const [calculatedLevel, setCalculatedLevel] = useState<any>(null);
-
-  // LÓGICA: Iluminar la tabla según lo que escribe el entrenador
-  useEffect(() => {
-    const val = parseFloat(metricValue);
-    if (!isNaN(val)) {
-        const found = testRangesMock.find(r => val >= r.min && val <= r.max);
-        setCalculatedLevel(found || null);
-    } else {
-        setCalculatedLevel(null);
-    }
-  }, [metricValue]);
-
-  const handleSubmit = () => {
-    if (!metricValue.trim()) {
-        Alert.alert("Falta el resultado", "Debes ingresar el valor obtenido por el atleta.");
-        return;
-    }
-    
-    // El sistema confirma la clasificación basada en el input del entrenador
-    const nivelFinal = calculatedLevel ? calculatedLevel.label : "Sin Clasificación";
-
-    Alert.alert(
-        "¿Registrar Resultado?", 
-        `Atleta: ${athleteData.name}\nResultado: ${metricValue}\nClasificación: ${nivelFinal}`, 
-        [
-            { text: "Corregir", style: "cancel" },
-            { 
-                text: "Confirmar", 
-                onPress: () => {
-                    // AQUÍ SE ENVÍA A SUPABASE (BACKEND)
-                    navigation.goBack(); 
-                } 
-            }
-        ]
-    );
-  };
-
-  return (
-    <View className="flex-1 bg-[#F5F5F7]">
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
-      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
-          
-          {/* --- HEADER --- */}
-          <View className="px-6 pt-4 pb-2">
-            <Pressable 
-              onPress={() => navigation.goBack()} 
-              className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm mb-4 border border-gray-100 active:bg-gray-50"
-            >
-              <Ionicons name="arrow-back" size={20} color="#111827" />
-            </Pressable>
-            
-            <Text className="text-gray-900 text-3xl font-bold mb-1">Registrar Resultado</Text>
-            <Text className="text-gray-500 text-base font-medium">
-              Evaluando: <Text className="text-blue-600 font-bold">{testName}</Text>
-            </Text>
-          </View>
-
-          <ScrollView 
-            className="flex-1 px-6 pt-6" 
-            contentContainerStyle={{ paddingBottom: 120 }}
-            showsVerticalScrollIndicator={false}
-          >
-            
-            {/* TARJETA 1: DATOS DEL ATLETA (CONTEXTO PARA EL ENTRENADOR) */}
-            <View className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6">
-                <View className="flex-row items-center gap-3 mb-4">
-                    <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center">
-                        <Ionicons name="person" size={20} color="#2563EB" />
-                    </View>
-                    <View>
-                        <Text className="text-lg font-bold text-slate-900">{athleteData.name}</Text>
-                        <Text className="text-xs text-slate-400 font-bold uppercase">Datos Físicos</Text>
-                    </View>
-                </View>
-
-                <View className="flex-row justify-between bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <View className="items-center flex-1 border-r border-slate-200">
-                        <Text className="text-xs text-slate-400 uppercase font-bold">Peso</Text>
-                        <Text className="text-slate-900 font-bold text-base">{athleteData.weight}</Text>
-                    </View>
-                    <View className="items-center flex-1 border-r border-slate-200">
-                        <Text className="text-xs text-slate-400 uppercase font-bold">Altura</Text>
-                        <Text className="text-slate-900 font-bold text-base">{athleteData.height}</Text>
-                    </View>
-                    <View className="items-center flex-1">
-                        <Text className="text-xs text-slate-400 uppercase font-bold">Edad</Text>
-                        <Text className="text-slate-900 font-bold text-base">{athleteData.age}</Text>
-                    </View>
-                </View>
-            </View>
-
-            {/* TARJETA 2: INGRESO DE RESULTADO */}
-            <View className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6 items-center">
-                <Text className="text-gray-900 font-bold text-lg mb-2">Ingresa el Valor</Text>
-                <Text className="text-gray-400 text-xs mb-4 text-center">
-                    Escribe el resultado obtenido por el atleta
-                </Text>
-                
-                <View className="flex-row items-end justify-center w-full mb-4">
-                    <TextInput 
-                        placeholder="0"
-                        keyboardType="numeric"
-                        value={metricValue}
-                        onChangeText={setMetricValue}
-                        // 🛡️ SEGURIDAD: Style nativo evita el crash
-                        style={styles.bigInput} 
-                        placeholderTextColor="#E2E8F0"
-                    />
-                    <Text className="text-gray-400 font-bold text-xl mb-4 ml-2">
-                        Unit
-                    </Text>
-                </View>
-
-                {calculatedLevel && (
-                    <View className={`px-4 py-2 rounded-full ${calculatedLevel.bg} border ${calculatedLevel.border}`}>
-                        <Text className={`font-bold text-sm ${calculatedLevel.color}`}>
-                            CLASIFICACIÓN: {calculatedLevel.label.toUpperCase()}
-                        </Text>
-                    </View>
-                )}
-            </View>
-
-            {/* TARJETA 3: TABLA DE REFERENCIA (Para que el entrenador compare) */}
-            <View className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
-                <View className="bg-gray-50 p-4 border-b border-gray-100 flex-row items-center gap-2">
-                    <Ionicons name="list" size={18} color="#64748B" />
-                    <Text className="text-gray-900 font-bold text-sm">Tabla de Referencia</Text>
-                </View>
-                
-                <View className="p-2">
-                    {testRangesMock.map((level) => {
-                        const isActive = calculatedLevel?.id === level.id;
-                        return (
-                            <View 
-                                key={level.id} 
-                                className={`flex-row justify-between items-center p-3 rounded-xl border mb-1 ${
-                                    isActive ? `${level.bg} ${level.border}` : 'bg-white border-transparent'
-                                }`}
-                            >
-                                <View className="flex-row items-center gap-3">
-                                    <View className={`w-2 h-2 rounded-full ${isActive ? 'bg-blue-600' : 'bg-gray-300'}`} />
-                                    <Text className={`font-bold text-sm ${isActive ? 'text-slate-900' : 'text-gray-400'}`}>
-                                        {level.label}
-                                    </Text>
-                                </View>
-                                <View className="flex-row items-center">
-                                    <Text className={`text-xs ${isActive ? 'font-bold text-slate-700' : 'text-gray-300'}`}>
-                                        {level.min} - {level.max}
-                                    </Text>
-                                    {isActive && <Ionicons name="checkmark" size={16} color="#2563EB" style={{marginLeft: 6}} />}
-                                </View>
-                            </View>
-                        );
-                    })}
-                </View>
-            </View>
-
-            {/* TARJETA 4: COMENTARIOS */}
-            <View className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6">
-                <Text className="text-gray-900 font-bold text-base mb-3">Observaciones (Opcional)</Text>
-                <View style={styles.textAreaContainer}>
-                    <TextInput 
-                        placeholder="Técnica, esfuerzo, dolor..."
-                        multiline
-                        textAlignVertical="top"
-                        value={comments}
-                        onChangeText={setComments}
-                        // 🛡️ SEGURIDAD: Style nativo
-                        style={styles.textArea} 
-                        placeholderTextColor="#9CA3AF"
-                    />
-                </View>
-            </View>
-
-          </ScrollView>
-
-          {/* FOOTER */}
-          <View className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-6 pb-8 shadow-2xl">
-            <Pressable 
-                onPress={handleSubmit}
-                className={`w-full h-14 rounded-2xl flex-row items-center justify-center shadow-lg active:scale-[0.98] transition-all ${
-                    metricValue.length > 0 ? 'bg-blue-600 shadow-blue-200' : 'bg-gray-200 shadow-none'
-                }`}
-                disabled={metricValue.length === 0}
-            >
-                <Ionicons name="save-outline" size={20} color={metricValue.length > 0 ? "white" : "#9CA3AF"} style={{ marginRight: 8 }} />
-                <Text className={`font-bold text-lg ${metricValue.length > 0 ? "text-white" : "text-gray-400"}`}>
-                    Guardar Resultado
-                </Text>
-            </Pressable>
-          </View>
-
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </View>
-  );
+interface TestRange {
+    id?: number; 
+    nombre: string;
+    min: number;
+    max: number;
+    color: string; 
 }
 
-// ESTILOS SEGUROS (Evitan el error path.split de NativeWind)
+export default function SendFeedback({ navigation, route }: Props) {
+    const { result } = route.params || {};
+
+    // Datos recibidos de la navegación
+    const athleteId = result?.athleteId;
+    const athleteName = result?.athleteName || "Atleta"; 
+    const assignmentId = result?.assignmentId;
+    const testName = result?.test || "Prueba";
+
+    // ESTADOS
+    const [metricValue, setMetricValue] = useState('');
+    const [comments, setComments] = useState(''); 
+    
+    const [stats, setStats] = useState({ weight: '—', height: '—', age: '—' });
+    const [unit, setUnit] = useState('Unidad');
+
+    const [testRanges, setTestRanges] = useState<TestRange[]>([]); 
+    const [calculatedLevel, setCalculatedLevel] = useState<TestRange | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [loadingLevels, setLoadingLevels] = useState(true); 
+
+    // --- ESTADO PARA CUSTOM ALERT ---
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        type: AlertType;
+        onConfirm?: () => void;
+        buttonText?: string;
+        cancelText?: string;
+    }>({
+        visible: false,
+        title: "",
+        message: "",
+        type: "info"
+    });
+
+    const closeAlert = () => {
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+    };
+
+    const showAlert = (
+        title: string, 
+        message: string, 
+        type: AlertType = "info", 
+        onConfirm?: () => void,
+        buttonText: string = "Entendido",
+        cancelText?: string
+    ) => {
+        setAlertConfig({
+            visible: true,
+            title,
+            message,
+            type,
+            onConfirm,
+            buttonText,
+            cancelText
+        });
+    };
+
+    // Helper fecha local
+    const getLocalYYYYMMDD = (date: Date) => {
+        const tzOff = date.getTimezoneOffset() * 60000;
+        const local = new Date(date.getTime() - tzOff);
+        return local.toISOString().split('T')[0];
+    };
+
+    // 1. CARGAR DATOS FÍSICOS
+    useEffect(() => {
+        const fetchAthleteStats = async () => {
+            if (!athleteId) return;
+            try {
+                const { data, error } = await supabase
+                    .from('atleta')
+                    .select('peso, estatura, fecha_nacimiento')
+                    .eq('no_documento', athleteId)
+                    .single();
+
+                if (data && !error) {
+                    let ageStr = '—';
+                    if (data.fecha_nacimiento) {
+                        const diff = Date.now() - new Date(data.fecha_nacimiento).getTime();
+                        const ageDate = new Date(diff); 
+                        ageStr = Math.abs(ageDate.getUTCFullYear() - 1970).toString();
+                    }
+
+                    setStats({
+                        weight: data.peso ? `${data.peso} kg` : '—',
+                        height: data.estatura ? `${data.estatura} m` : '—',
+                        age: ageStr !== '—' ? `${ageStr} años` : '—'
+                    });
+                }
+            } catch (err) {
+                console.error("Error cargando stats:", err);
+            }
+        };
+        fetchAthleteStats();
+    }, [athleteId]);
+    
+    // 2. CARGAR NIVELES REALES Y UNIDAD
+    useEffect(() => {
+        const fetchTestDetails = async () => {
+            if (!assignmentId) {
+                setLoadingLevels(false);
+                return;
+            }
+
+            try {
+                const { data: assignmentData, error: assignError } = await supabase
+                    .from('prueba_asignada')
+                    .select('prueba_id')
+                    .eq('id', assignmentId)
+                    .single();
+
+                if (assignError || !assignmentData) throw new Error("Assignment not found");
+
+                const { data: testData, error: testError } = await supabase
+                    .from('prueba')
+                    .select('niveles, tipo_metrica')
+                    .eq('id', assignmentData.prueba_id)
+                    .single();
+
+                if (testError) throw testError;
+
+                if (testData?.tipo_metrica) {
+                    const raw = testData.tipo_metrica.toLowerCase().trim();
+                    let shortUnit = testData.tipo_metrica;
+
+                    if (raw === 'time_min' || raw.includes('minutos') || raw.includes('minute')) {
+                        shortUnit = 'Min';
+                    } 
+                    else if (raw === 'time_sec' || raw.includes('segundos') || raw.includes('second')) {
+                        shortUnit = 'Seg';
+                    }
+                    else if (raw.includes('rep')) {
+                        shortUnit = 'Reps';
+                    }
+                    else if (raw.includes('kilo') || raw.includes('kg')) {
+                        shortUnit = 'Kg';
+                    }
+                    else if (raw.includes('metr')) {
+                        shortUnit = 'm';
+                    }
+
+                    setUnit(shortUnit);
+                }
+                
+                const loadedLevels = testData?.niveles && Array.isArray(testData.niveles) 
+                    ? (testData.niveles as TestRange[]) 
+                    : [];
+                
+                setTestRanges(loadedLevels);
+
+            } catch (err) {
+                console.error("Error fetching levels:", err);
+            } finally {
+                setLoadingLevels(false);
+            }
+        };
+
+        fetchTestDetails();
+    }, [assignmentId]);
+
+    // 3. CALCULAR NIVEL EN TIEMPO REAL
+    useEffect(() => {
+        const val = parseFloat(metricValue);
+        if (!isNaN(val) && testRanges.length > 0) {
+            const found = testRanges.find(r => val >= r.min && val <= r.max);
+            setCalculatedLevel(found || null);
+        } else {
+            setCalculatedLevel(null);
+        }
+    }, [metricValue, testRanges]); 
+
+
+    // 4. GUARDAR RESULTADO
+    const saveResultToSupabase = async () => {
+        // Cerrar alerta anterior si existía
+        closeAlert(); 
+        
+        if (!assignmentId || !athleteId || !metricValue.trim()) return;
+
+        setSaving(true);
+        const today = getLocalYYYYMMDD(new Date());
+
+        try {
+            const { data: resultData, error: resultError } = await supabase
+                .from("resultado_prueba")
+                .insert({
+                    prueba_asignada_id: assignmentId,
+                    atleta_no_documento: athleteId,
+                    fecha_realizacion: today,
+                    valor: metricValue.trim()
+                })
+                .select('id')
+                .single();
+
+            if (resultError) throw resultError;
+            
+            if (comments.trim() && resultData?.id) {
+                await supabase
+                    .from("comentario")
+                    .insert({
+                        resultado_prueba_id: resultData.id,
+                        fecha: today,
+                        mensaje: comments.trim()
+                    });
+            }
+
+            // ÉXITO - Usamos CustomAlert
+            showAlert(
+                "¡Excelente!",
+                "El resultado ha sido guardado correctamente.",
+                "success",
+                () => navigation.goBack(),
+                "Finalizar"
+            );
+
+        } catch (err: any) {
+            // ERROR - Usamos CustomAlert
+            showAlert(
+                "Error",
+                err.message || "No se pudo guardar el resultado.",
+                "error",
+                undefined,
+                "Intentar de nuevo"
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSubmit = () => {
+        if (!metricValue.trim()) {
+            showAlert("Faltan datos", "Por favor ingresa el valor obtenido en la prueba.", "warning");
+            return;
+        }
+        
+        const nivelFinal = calculatedLevel?.nombre ? calculatedLevel.nombre : "Sin Clasificación";
+        
+        // CONFIRMACIÓN - Usamos CustomAlert con botón de confirmar y cancelar
+        showAlert(
+            "¿Confirmar Resultado?",
+            `Vas a registrar:\n\nValor: ${metricValue} ${unit}\nNivel: ${nivelFinal}`,
+            "info",
+            saveResultToSupabase, // Acción al confirmar
+            "Sí, Guardar",
+            "Cancelar"
+        );
+    };
+
+    const getLevelStyle = (isActive: boolean, colorRef: string) => {
+        if (!isActive) return { bg: '#FFFFFF', text: COLORS.textMuted, border: COLORS.background };
+        const baseColor = colorRef ? colorRef.toLowerCase() : 'gray';
+        
+        if (baseColor.includes('green') || baseColor === 'verde') return { bg: '#DCFCE7', text: '#15803D', border: '#86EFAC' };
+        if (baseColor.includes('blue') || baseColor === 'azul') return { bg: '#DBEAFE', text: '#1E40AF', border: '#93C5FD' };
+        if (baseColor.includes('orange') || baseColor === 'naranja') return { bg: '#FFEDD5', text: '#9A3412', border: '#FDBA74' };
+        if (baseColor.includes('red') || baseColor === 'rojo') return { bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5' };
+        
+        return { bg: '#F3F4F6', text: '#374151', border: '#D1D5DB' }; 
+    };
+
+    return (
+        <View style={styles.mainContainer}>
+            <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+            
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+                    
+                    {/* HEADER */}
+                    <View style={styles.header}>
+                        <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+                            <Ionicons name="arrow-back" size={20} color={COLORS.textDark} />
+                        </Pressable>
+                        <View>
+                            <Text style={styles.headerTitle}>Registrar Resultado</Text>
+                            <Text style={styles.headerSubtitle}>Prueba: <Text style={styles.headerHighlight}>{testName}</Text></Text>
+                        </View>
+                    </View>
+
+                    <ScrollView 
+                        style={styles.scrollView} 
+                        contentContainerStyle={{ paddingBottom: 120 }}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {/* 1. TARJETA ATLETA */}
+                        <View style={styles.card}>
+                            <View style={styles.athleteHeader}>
+                                <View style={styles.avatar}>
+                                    <Ionicons name="person" size={24} color={COLORS.primary} />
+                                </View>
+                                <View>
+                                    <Text style={styles.athleteName}>{athleteName}</Text>
+                                    <Text style={styles.athleteLabel}>DATOS FÍSICOS</Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.statsRow}>
+                                <View style={[styles.statCol, styles.statBorder]}>
+                                    <Text style={styles.statLabel}>PESO</Text>
+                                    <Text style={styles.statValue}>{stats.weight}</Text>
+                                </View>
+                                <View style={[styles.statCol, styles.statBorder]}>
+                                    <Text style={styles.statLabel}>ESTATURA</Text>
+                                    <Text style={styles.statValue}>{stats.height}</Text>
+                                </View>
+                                <View style={styles.statCol}>
+                                    <Text style={styles.statLabel}>EDAD</Text>
+                                    <Text style={styles.statValue}>{stats.age}</Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        {/* 2. TARJETA INPUT */}
+                        <View style={[styles.card, { alignItems: 'center', paddingVertical: 32 }]}>
+                            <Text style={styles.inputLabel}>Ingresa el Valor</Text>
+                            
+                            <View style={styles.inputWrapper}>
+                                <TextInput 
+                                    placeholder="0"
+                                    keyboardType="numeric"
+                                    value={metricValue}
+                                    onChangeText={setMetricValue}
+                                    style={styles.bigInput} 
+                                    placeholderTextColor="#E2E8F0"
+                                />
+                                <Text style={styles.unitText}>{unit}</Text>
+                            </View>
+
+                            {calculatedLevel && (
+                                <View style={[
+                                    styles.badge, 
+                                    { backgroundColor: getLevelStyle(true, calculatedLevel.color).bg, borderColor: getLevelStyle(true, calculatedLevel.color).border }
+                                ]}>
+                                    {/* CORRECCIÓN AQUI: Protección contra undefined en toUpperCase */}
+                                    <Text style={[
+                                        styles.badgeText, 
+                                        { color: getLevelStyle(true, calculatedLevel.color).text }
+                                    ]}>
+                                        {calculatedLevel?.nombre 
+                                            ? calculatedLevel.nombre.toUpperCase() 
+                                            : "NIVEL"}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+
+                        {/* 3. TABLA REFERENCIA */}
+                        <View style={styles.card}>
+                            <View style={styles.cardHeader}>
+                                <Ionicons name="list" size={18} color={COLORS.textMuted} />
+                                <Text style={styles.cardTitle}>Tabla de Referencia</Text>
+                            </View>
+                            
+                            <View style={{ padding: 8 }}>
+                                {loadingLevels ? (
+                                    <ActivityIndicator size="small" color={COLORS.primary} />
+                                ) : testRanges.length === 0 ? (
+                                    <Text style={styles.emptyText}>No hay niveles configurados para esta prueba.</Text>
+                                ) : (
+                                    testRanges.map((level, index) => {
+                                        const isActive = calculatedLevel?.nombre === level.nombre;
+                                        const styleProps = getLevelStyle(isActive, level.color);
+                                        
+                                        return (
+                                            <View 
+                                                key={index} 
+                                                style={[
+                                                    styles.tableRow, 
+                                                    isActive && { backgroundColor: styleProps.bg }
+                                                ]}
+                                            >
+                                                <View style={styles.rowLeft}>
+                                                    <View style={[
+                                                        styles.dot, 
+                                                        { backgroundColor: isActive ? styleProps.text : '#D1D5DB' }
+                                                    ]} />
+                                                    <Text style={[
+                                                        styles.rowName, 
+                                                        isActive ? { color: COLORS.textDark, fontWeight: '700' } : { color: COLORS.textMuted }
+                                                    ]}>
+                                                        {level.nombre}
+                                                    </Text>
+                                                </View>
+                                                <View style={styles.rowRight}>
+                                                    <Text style={[
+                                                        styles.rowRange,
+                                                        isActive && { color: COLORS.textDark, fontWeight: '700' }
+                                                    ]}>
+                                                        {level.min} - {level.max} {unit}
+                                                    </Text>
+                                                    {isActive && <Ionicons name="checkmark" size={16} color={COLORS.primary} style={{marginLeft: 6}} />}
+                                                </View>
+                                            </View>
+                                        );
+                                    })
+                                )}
+                            </View>
+                        </View>
+
+                        {/* 4. COMENTARIOS */}
+                        <View style={styles.card}>
+                            <Text style={styles.commentTitle}>Observaciones (Opcional)</Text>
+                            <View style={styles.textAreaContainer}>
+                                <TextInput 
+                                    placeholder="Técnica, esfuerzo, dolor..."
+                                    multiline
+                                    textAlignVertical="top"
+                                    value={comments}
+                                    onChangeText={setComments}
+                                    style={styles.textArea} 
+                                    placeholderTextColor="#9CA3AF"
+                                />
+                            </View>
+                        </View>
+
+                    </ScrollView>
+
+                    {/* FOOTER */}
+                    <View style={styles.footer}>
+                        <Pressable 
+                            onPress={handleSubmit}
+                            style={[
+                                styles.saveButton,
+                                metricValue.length > 0 ? styles.saveButtonActive : styles.saveButtonDisabled
+                            ]}
+                            disabled={metricValue.length === 0 || saving}
+                        >
+                            {saving ? (
+                                <ActivityIndicator size="small" color="white" />
+                            ) : (
+                                <>
+                                    <Ionicons name="save-outline" size={20} color={metricValue.length > 0 ? "white" : "#9CA3AF"} />
+                                    <Text style={[
+                                        styles.saveButtonText,
+                                        metricValue.length > 0 ? { color: "white" } : { color: "#9CA3AF" }
+                                    ]}>
+                                        Guardar Resultado
+                                    </Text>
+                                </>
+                            )}
+                        </Pressable>
+                    </View>
+
+                </KeyboardAvoidingView>
+            </SafeAreaView>
+
+            {/* RENDERIZADO DEL ALERT PERSONALIZADO */}
+            <CustomAlert 
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                type={alertConfig.type}
+                onClose={closeAlert}
+                onConfirm={alertConfig.onConfirm}
+                buttonText={alertConfig.buttonText}
+                cancelText={alertConfig.cancelText}
+            />
+
+        </View>
+    );
+}
+
 const styles = StyleSheet.create({
-  bigInput: {
-    fontSize: 56,
-    fontWeight: '800',
-    color: '#0F172A',
-    borderBottomWidth: 2,
-    borderBottomColor: '#2563EB',
-    textAlign: 'center',
-    minWidth: 100,
-    paddingBottom: 8,
-    height: 80
-  },
-  textAreaContainer: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    padding: 16,
-    height: 120,
-  },
-  textArea: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111827',
-    textAlignVertical: 'top',
-  }
+    mainContainer: {
+        flex: 1,
+        backgroundColor: COLORS.background,
+    },
+    // Header
+    header: {
+        paddingHorizontal: 24,
+        paddingTop: 16,
+        paddingBottom: 24,
+    },
+    backButton: {
+        width: 40,
+        height: 40,
+        backgroundColor: COLORS.cardBg,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    headerTitle: {
+        fontSize: 28,
+        fontWeight: '800',
+        color: COLORS.textDark,
+        marginBottom: 4,
+    },
+    headerSubtitle: {
+        fontSize: 16,
+        color: COLORS.textMuted,
+        fontWeight: '500',
+    },
+    headerHighlight: {
+        color: COLORS.primary,
+        fontWeight: '700',
+    },
+    scrollView: {
+        flex: 1,
+        paddingHorizontal: 24,
+    },
+    // Cards
+    card: {
+        backgroundColor: COLORS.cardBg,
+        borderRadius: 16,
+        padding: 20,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    // Athlete Section
+    athleteHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    avatar: {
+        width: 48,
+        height: 48,
+        backgroundColor: '#EFF6FF',
+        borderRadius: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    athleteName: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: COLORS.textDark,
+    },
+    athleteLabel: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: COLORS.textMuted,
+        textTransform: 'uppercase',
+    },
+    statsRow: {
+        flexDirection: 'row',
+        backgroundColor: '#F8FAFC',
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    statCol: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    statBorder: {
+        borderRightWidth: 1,
+        borderRightColor: COLORS.border,
+    },
+    statLabel: {
+        fontSize: 10,
+        color: COLORS.textMuted,
+        fontWeight: '700',
+        marginBottom: 4,
+    },
+    statValue: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: COLORS.textDark,
+    },
+    // Input Section
+    inputLabel: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: COLORS.textDark,
+        marginBottom: 8,
+    },
+    inputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+        marginBottom: 24,
+    },
+    bigInput: {
+        fontSize: 56,
+        fontWeight: '800',
+        color: COLORS.textDark,
+        borderBottomWidth: 2,
+        borderBottomColor: COLORS.primary,
+        textAlign: 'center',
+        minWidth: 120,
+        paddingBottom: 4,
+        height: 80,
+    },
+    unitText: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: COLORS.textMuted,
+        marginBottom: 16,
+        marginLeft: 8,
+    },
+    badge: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        borderWidth: 1,
+    },
+    badgeText: {
+        fontSize: 12,
+        fontWeight: '800',
+    },
+    // Table Section
+    cardHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingBottom: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+        marginBottom: 8,
+        gap: 8,
+    },
+    cardTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: COLORS.textDark,
+    },
+    tableRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        marginBottom: 4,
+    },
+    rowLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    dot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+    },
+    rowName: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    rowRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    rowRange: {
+        fontSize: 12,
+        color: COLORS.textMuted,
+    },
+    emptyText: {
+        textAlign: 'center',
+        color: COLORS.textMuted,
+        padding: 12,
+        fontStyle: 'italic',
+    },
+    // Comments
+    commentTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: COLORS.textDark,
+        marginBottom: 12,
+    },
+    textAreaContainer: {
+        backgroundColor: '#F9FAFB',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        padding: 16,
+        height: 120,
+    },
+    textArea: {
+        flex: 1,
+        fontSize: 16,
+        color: COLORS.textDark,
+        textAlignVertical: 'top',
+    },
+    // Footer
+    footer: {
+        position: 'absolute',
+        bottom: 0,
+        width: '100%',
+        backgroundColor: COLORS.cardBg,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.border,
+        paddingHorizontal: 24,
+        paddingVertical: 24,
+        paddingBottom: 32,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 10,
+    },
+    saveButton: {
+        height: 56,
+        borderRadius: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+    },
+    saveButtonActive: {
+        backgroundColor: COLORS.primary,
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    saveButtonDisabled: {
+        backgroundColor: '#E2E8F0',
+    },
+    saveButtonText: {
+        fontSize: 16,
+        fontWeight: '700',
+    },
 });
