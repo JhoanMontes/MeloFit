@@ -23,15 +23,15 @@ type Props = NativeStackScreenProps<EntrenadorStackParamList, "SendFeedback">;
 // --- INTERFAZ AJUSTADA para tipar el JSONB de niveles de la BD ---
 interface TestRange {
     id: number;
-    nombre: string; // <--- USAMOS 'nombre' para que coincida con tu JSONB de niveles
+    nombre: string;
     min: number;
     max: number;
-    color: string; // Tailwind class
-    bg: string; // Tailwind class
-    border: string; // Tailwind class
+    color: string;
+    bg: string;
+    border: string;
 }
 
-// --- MOCK DE NIVELES (USANDO 'nombre' y ajustando a la interfaz) ---
+// MOCK DE NIVELES (Usado como fallback si la DB falla o está vacía)
 const testRangesMock: TestRange[] = [
     { id: 1, nombre: 'Principiante', min: 0, max: 10, color: 'text-gray-600', bg: 'bg-gray-100', border: 'border-gray-200' },
     { id: 2, nombre: 'Intermedio', min: 11, max: 20, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
@@ -57,7 +57,7 @@ export default function SendFeedback({ navigation, route }: Props) {
 
     // ESTADOS
     const [metricValue, setMetricValue] = useState('');
-    const [comments, setComments] = useState('');
+    const [comments, setComments] = useState(''); // Estado para los comentarios
     const [testRanges, setTestRanges] = useState<TestRange[]>(testRangesMock); 
     const [calculatedLevel, setCalculatedLevel] = useState<TestRange | null>(null);
     const [saving, setSaving] = useState(false);
@@ -69,9 +69,7 @@ export default function SendFeedback({ navigation, route }: Props) {
         return local.toISOString().split('T')[0];
     };
     
-    // ----------------------------------------------------
     // LÓGICA DE CARGA DE NIVELES DESDE SUPABASE
-    // ----------------------------------------------------
     useEffect(() => {
         const fetchTestLevels = async () => {
             if (!assignmentId) {
@@ -100,7 +98,6 @@ export default function SendFeedback({ navigation, route }: Props) {
 
                 if (testError || !testData) throw testError || new Error("Test levels not found.");
 
-                // Validamos que 'niveles' sea un array antes de usarlo
                 const loadedLevels = Array.isArray(testData.niveles) ? (testData.niveles as TestRange[]) : [];
                 
                 if(loadedLevels.length > 0) {
@@ -131,7 +128,10 @@ export default function SendFeedback({ navigation, route }: Props) {
         }
     }, [metricValue, testRanges]); 
 
-    // Envío a Supabase (VERSIÓN ORIGINAL Y SEGURA)
+
+    // -----------------------------------------------------------------------
+    // FUNCIÓN MEJORADA: Guarda el resultado y el comentario en cascada
+    // -----------------------------------------------------------------------
     const saveResultToSupabase = async () => {
         if (!assignmentId || !athleteId || !metricValue.trim()) {
             Alert.alert("Error", "Faltan datos requeridos.");
@@ -139,43 +139,67 @@ export default function SendFeedback({ navigation, route }: Props) {
         }
 
         setSaving(true);
-        try {
-            const today = getLocalYYYYMMDD(new Date());
+        const today = getLocalYYYYMMDD(new Date());
 
-            const { error } = await supabase
+        try {
+            // 1. REGISTRAR RESULTADO en resultado_prueba
+            const { data: resultData, error: resultError } = await supabase
                 .from("resultado_prueba")
                 .insert({
                     prueba_asignada_id: assignmentId,
                     atleta_no_documento: athleteId,
                     fecha_realizacion: today,
                     valor: metricValue.trim()
-                });
+                })
+                .select('id') // Importante: pide el ID del nuevo registro
+                .single();
 
-            if (error) throw error;
+            if (resultError) throw resultError;
+            
+            const resultadoPruebaId = resultData?.id;
 
-            Alert.alert("Éxito", "Resultado registrado correctamente.", [
+            // 2. REGISTRAR COMENTARIO (SOLO SI HAY TEXTO)
+            if (comments.trim() && resultadoPruebaId) {
+                const { error: commentError } = await supabase
+                    .from("comentario")
+                    .insert({
+                        resultado_prueba_id: resultadoPruebaId,
+                        fecha: today,
+                        mensaje: comments.trim()
+                    });
+
+                if (commentError) {
+                    // Solo mostramos un warning si falla el comentario, el resultado es más crítico
+                    console.warn("Error saving comment:", commentError);
+                }
+            }
+
+            Alert.alert("Éxito", "Resultado y comentarios registrados correctamente.", [
                 { text: "OK", onPress: () => navigation.goBack() }
             ]);
+
         } catch (err: any) {
-            console.error("Error saving result:", err);
+            console.error("Error saving result/comment:", err);
             const message = err?.message || "Ocurrió un error al guardar el resultado.";
             Alert.alert("Error", message);
         } finally {
             setSaving(false);
         }
     };
+    // -----------------------------------------------------------------------
+
 
     const handleSubmit = () => {
         if (!metricValue.trim()) {
             Alert.alert("Falta el resultado", "Debes ingresar el valor obtenido por el atleta.");
             return;
         }
-        // Usamos level.nombre para la clasificación
+        
         const nivelFinal = calculatedLevel ? calculatedLevel.nombre : "Sin Clasificación";
 
         Alert.alert(
             "¿Registrar Resultado?", 
-            `Atleta: ${athleteData.name}\nResultado: ${metricValue.trim()}\nClasificación: ${nivelFinal}`, 
+            `Atleta: ${athleteData.name}\nResultado: ${metricValue.trim()}\nClasificación: ${nivelFinal}\n${comments.trim() ? `Comentarios: ${comments.trim()}` : ''}`, 
             [
                 { text: "Corregir", style: "cancel" },
                 { 
@@ -216,6 +240,7 @@ export default function SendFeedback({ navigation, route }: Props) {
                         
                         {/* TARJETA 1: DATOS DEL ATLETA */}
                         <View className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6">
+                            {/* ... Contenido del Atleta sin cambios ... */}
                             <View className="flex-row items-center gap-3 mb-4">
                                 <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center">
                                     <Ionicons name="person" size={20} color="#2563EB" />
@@ -265,7 +290,6 @@ export default function SendFeedback({ navigation, route }: Props) {
 
                             {calculatedLevel && (
                                 <View className={`px-4 py-2 rounded-full ${calculatedLevel.bg} border ${calculatedLevel.border}`}>
-                                    {/* USAMOS level.nombre AQUÍ */}
                                     <Text className={`font-bold text-sm ${calculatedLevel.color}`}>
                                         CLASIFICACIÓN: {calculatedLevel.nombre.toUpperCase()}
                                     </Text>
@@ -273,7 +297,7 @@ export default function SendFeedback({ navigation, route }: Props) {
                             )}
                         </View>
 
-                        {/* TARJETA 3: TABLA DE REFERENCIA (Carga niveles desde Supabase) */}
+                        {/* TARJETA 3: TABLA DE REFERENCIA (Bordes removidos) */}
                         <View className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
                             <View className="bg-gray-50 p-4 border-b border-gray-100 flex-row items-center gap-2">
                                 <Ionicons name="list" size={18} color="#64748B" />
@@ -294,13 +318,13 @@ export default function SendFeedback({ navigation, route }: Props) {
                                         return (
                                             <View 
                                                 key={level.id || index} 
-                                                className={`flex-row justify-between items-center p-3 rounded-xl border mb-1 ${
-                                                    isActive ? `${level.bg} ${level.border}` : 'bg-white border-transparent'
-                                                }`}
+                                                // 🚨 CAMBIO AQUÍ: Se eliminan las clases de borde (border mb-1) para un look limpio
+                                                className={`flex-row justify-between items-center p-3 rounded-xl mb-1 
+                                                ${isActive ? `${level.bg}` : 'bg-white'}`}
                                             >
                                                 <View className="flex-row items-center gap-3">
+                                                    {/* Usamos el color del nivel o uno por defecto */}
                                                     <View className={`w-2 h-2 rounded-full ${isActive ? 'bg-blue-600' : 'bg-gray-300'}`} />
-                                                    {/* USAMOS level.nombre AQUÍ */}
                                                     <Text className={`font-bold text-sm ${isActive ? 'text-slate-900' : 'text-gray-400'}`}>
                                                         {level.nombre} 
                                                     </Text>
