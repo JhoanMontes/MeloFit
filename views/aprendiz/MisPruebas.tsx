@@ -1,375 +1,407 @@
-import React, { useState, useCallback } from "react";
-import { 
-  View, 
-  Text, 
-  Pressable, 
-  ScrollView, 
-  StatusBar,
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  FlatList,
+  Pressable,
   ActivityIndicator,
-  Alert,
-  RefreshControl
+  StyleSheet,
+  StatusBar,
+  Keyboard,
+  Modal,
+  ScrollView
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useFocusEffect } from "@react-navigation/native";
 import { 
   ArrowLeft, 
+  Search, 
   Calendar, 
-  CheckCircle2, 
-  FileText, 
-  Clock, 
   Trophy, 
-  ChevronRight,
-  AlertCircle 
+  MessageSquare,
+  ClipboardList,
+  TrendingUp,
+  BarChart3,
+  User,
+  XCircle,
+  X,
+  Clock,
+  Target
 } from "lucide-react-native";
-import { AprendizStackParamList } from "../../navigation/types";
+
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
+import { AprendizStackParamList } from "../../navigation/types";
 
 type Props = NativeStackScreenProps<AprendizStackParamList, "MisPruebas">;
 
-interface PendingTest {
-  id: number;
-  name: string;
-  description: string;
-  assignedDate: string;
-  deadlineRaw: string;
-  deadlineText: string;
-  prueba_id: number;
-}
-
-interface HistoryTest {
-  id: number;
-  name: string;
-  date: string;
-  result: string | null;
-  status: 'completed' | 'expired';
-  improvement: string | null;
-}
+// --- COLORES ---
+const COLORS = {
+  primary: "#2563eb",
+  primaryLight: "#eff6ff",
+  background: "#f8fafc",
+  white: "#ffffff",
+  textDark: "#0f172a",
+  textMuted: "#64748b",
+  borderColor: "#e2e8f0",
+  shadow: "#000000",
+};
 
 export default function MisPruebas({ navigation }: Props) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'pendientes' | 'realizadas'>('pendientes');
-  
-  const [pendingTests, setPendingTests] = useState<PendingTest[]>([]);
-  const [historyTests, setHistoryTests] = useState<HistoryTest[]>([]);
+  const insets = useSafeAreaInsets();
+
+  // Estados de Datos
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [allResults, setAllResults] = useState<any[]>([]);
+  const [filteredResults, setFilteredResults] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // --- FECHAS (Lógica Corregida) ---
-  const parseLocalDate = (dateString: string) => {
-    if (!dateString) return new Date();
-    const [year, month, day] = dateString.split('-').map(Number);
-    return new Date(year, month - 1, day);
-  };
+  // Estados del Modal de Detalle
+  const [selectedResult, setSelectedResult] = useState<any>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
-  const formatDate = (dateString: string) => {
-    const date = parseLocalDate(dateString);
-    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
-  };
+  useEffect(() => {
+    fetchHistory();
+  }, [user]);
 
-  const getDeadlineText = (dateString: string) => {
-    const deadline = parseLocalDate(dateString);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const diffTime = deadline.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) return "Vencida";
-    if (diffDays === 0) return "Hoy";
-    if (diffDays === 1) return "Mañana";
-    if (diffDays <= 7) return `${diffDays} días`;
-    return formatDate(dateString);
-  };
-
-  // --- CARGA DE DATOS ---
-  const fetchData = async () => {
+  // 1. Cargar Historial
+  const fetchHistory = async () => {
     if (!user) return;
-    if (!refreshing) setLoading(true);
-
     try {
-      // 1. Usuario
-      const { data: userData } = await supabase
-        .from('usuario').select('no_documento').eq('auth_id', user.id).single();
-      if (!userData) throw new Error("Usuario no encontrado");
-      const docId = userData.no_documento;
+      setLoading(true);
+      const { data: userData } = await supabase.from('usuario').select('no_documento').eq('auth_id', user.id).single();
+      if (!userData) return;
 
-      // 2. Asignaciones
-      const { data: assignments } = await supabase
-        .from('prueba_asignada_has_atleta')
-        .select(`
-          prueba_asignada (
-            id, fecha_asignacion, fecha_limite,
-            prueba ( id, nombre, descripcion )
-          )
-        `)
-        .eq('atleta_no_documento', docId);
-
-      // 3. Resultados
-      const { data: results } = await supabase
+      const { data, error } = await supabase
         .from('resultado_prueba')
         .select(`
-          id, prueba_asignada_id, fecha_realizacion, valor,
-          prueba_asignada ( prueba ( nombre ) )
+          id,
+          valor,
+          fecha_realizacion,
+          prueba_asignada!inner (
+            id,
+            prueba ( nombre, tipo_metrica, descripcion )
+          ),
+          comentario ( mensaje )
         `)
-        .eq('atleta_no_documento', docId);
+        .eq('atleta_no_documento', userData.no_documento)
+        .order('fecha_realizacion', { ascending: false });
 
-      // --- CLASIFICACIÓN ---
-      const pending: PendingTest[] = [];
-      const history: HistoryTest[] = [];
-      const completedAssignmentIds = results?.map(r => r.prueba_asignada_id) || [];
-
-      // A. Procesar ASIGNACIONES
-      assignments?.forEach((item: any) => {
-        const asignacion = item.prueba_asignada;
-        const isCompleted = completedAssignmentIds.includes(asignacion.id);
-
-        if (!isCompleted) {
-          const deadlineDate = parseLocalDate(asignacion.fecha_limite);
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-
-          if (deadlineDate < today) {
-            // VENCIDA -> Historial
-            history.push({
-              id: asignacion.id,
-              name: asignacion.prueba.nombre,
-              date: formatDate(asignacion.fecha_limite),
-              result: null,
-              status: 'expired',
-              improvement: null
-            });
-          } else {
-            // VIGENTE -> Pendientes
-            pending.push({
-              id: asignacion.id,
-              name: asignacion.prueba.nombre,
-              description: asignacion.prueba.descripcion,
-              assignedDate: formatDate(asignacion.fecha_asignacion),
-              deadlineRaw: asignacion.fecha_limite,
-              deadlineText: getDeadlineText(asignacion.fecha_limite),
-              prueba_id: asignacion.prueba.id
-            });
-          }
-        }
-      });
-
-      // B. Procesar RESULTADOS
-      results?.forEach((r: any) => {
-        history.push({
-          id: r.id,
-          name: r.prueba_asignada?.prueba?.nombre || "Prueba",
-          date: formatDate(r.fecha_realizacion),
-          result: r.valor || "Completada",
-          status: 'completed',
-          improvement: null 
-        });
-      });
-
-      // Ordenar
-      pending.sort((a, b) => new Date(a.deadlineRaw).getTime() - new Date(b.deadlineRaw).getTime());
-      history.sort((a, b) => b.id - a.id);
-
-      setPendingTests(pending);
-      setHistoryTests(history);
-
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "No se pudieron cargar los datos.");
+      if (error) throw error;
+      setAllResults(data || []);
+      setFilteredResults(data || []);
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
-  useFocusEffect(
-    useCallback(() => { fetchData(); }, [])
-  );
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchData();
+  // 2. Búsqueda
+  const handleSearch = (text: string) => {
+    setSearchQuery(text);
+    if (text.trim() === "") {
+      setFilteredResults(allResults);
+    } else {
+      const lowerText = text.toLowerCase();
+      const filtered = allResults.filter((item) => {
+        const testName = item.prueba_asignada?.prueba?.nombre?.toLowerCase() || "";
+        return testName.includes(lowerText);
+      });
+      setFilteredResults(filtered);
+    }
   };
 
-  return (
-    <View className="flex-1 bg-slate-50">
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        
-        {/* HEADER */}
-        <View className="px-6 pt-4 pb-2">
-          <Pressable 
-            onPress={() => navigation.goBack()} 
-            className="w-12 h-12 bg-white rounded-full items-center justify-center shadow-sm border border-slate-200 mb-6 active:bg-slate-50"
-          >
-            <ArrowLeft size={22} color="#334155" />
-          </Pressable>
-          <Text className="text-slate-900 text-3xl font-extrabold tracking-tight">Mis Pruebas</Text>
-          <Text className="text-slate-500 text-base font-medium mt-1">Gestiona tus evaluaciones físicas</Text>
-        </View>
+  const openDetail = (item: any) => {
+    setSelectedResult(item);
+    setShowDetailModal(true);
+  };
 
-        {/* TABS */}
-        <View className="px-6 py-6">
-          <View className="bg-white p-1.5 rounded-2xl flex-row shadow-sm border border-slate-100">
-            <Pressable
-              onPress={() => setActiveTab('pendientes')}
-              className={`flex-1 py-3 rounded-xl items-center justify-center transition-all ${
-                activeTab === 'pendientes' ? 'bg-blue-600 shadow-sm shadow-blue-200' : 'bg-transparent'
-              }`}
-            >
-              <Text className={`font-bold text-sm ${activeTab === 'pendientes' ? 'text-white' : 'text-slate-500'}`}>Pendientes</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setActiveTab('realizadas')}
-              className={`flex-1 py-3 rounded-xl items-center justify-center transition-all ${
-                activeTab === 'realizadas' ? 'bg-blue-600 shadow-sm shadow-blue-200' : 'bg-transparent'
-              }`}
-            >
-              <Text className={`font-bold text-sm ${activeTab === 'realizadas' ? 'text-white' : 'text-slate-500'}`}>Historial</Text>
-            </Pressable>
+  // 3. Render Item (Tarjeta)
+  const renderItem = ({ item }: { item: any }) => {
+    const hasComment = item.comentario && item.comentario.length > 0;
+    
+    return (
+      <Pressable 
+        style={({pressed}) => [styles.card, pressed && styles.cardPressed]}
+        onPress={() => openDetail(item)}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.cardIconBg}>
+            <Trophy size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.testName} numberOfLines={1}>
+              {item.prueba_asignada?.prueba?.nombre}
+            </Text>
+            <View style={styles.dateRow}>
+              <Calendar size={12} color={COLORS.textMuted} style={{ marginRight: 4 }} />
+              <Text style={styles.testDate}>
+                {new Date(item.fecha_realizacion).toLocaleDateString()}
+              </Text>
+            </View>
+          </View>
+          
+          <View style={styles.badgeContainer}>
+            <Text style={styles.badgeValue}>{item.valor}</Text>
+            <Text style={styles.badgeUnit}>
+              {item.prueba_asignada?.prueba?.tipo_metrica}
+            </Text>
           </View>
         </View>
 
-        {/* CONTENT */}
-        {loading ? (
-            <View className="flex-1 justify-center items-center">
-                <ActivityIndicator size="large" color="#2563EB" />
-            </View>
-        ) : (
-            <ScrollView 
-                className="flex-1 px-6" 
-                contentContainerStyle={{ paddingBottom: 40 }}
-                showsVerticalScrollIndicator={false}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#2563EB"]} />}
-            >
+        {hasComment && (
+          <View style={styles.feedbackPreview}>
+            <MessageSquare size={14} color={COLORS.textMuted} style={{ marginTop: 2 }} />
+            <Text style={styles.feedbackTextPreview} numberOfLines={2}>
+              "{item.comentario[0].mensaje}"
+            </Text>
+          </View>
+        )}
+      </Pressable>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      
+      {/* MODAL DE DETALLE */}
+      <Modal 
+        animationType="slide" 
+        transparent={true} 
+        visible={showDetailModal} 
+        onRequestClose={() => setShowDetailModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setShowDetailModal(false)} />
+          <View style={styles.modalContent}>
             
-            {/* TAB PENDIENTES */}
-            {activeTab === 'pendientes' && (
-                <View>
-                {pendingTests.length === 0 ? (
-                    <View className="bg-white rounded-[32px] p-8 items-center shadow-sm border border-slate-100 mt-4">
-                        <View className="bg-blue-50 w-20 h-20 rounded-full items-center justify-center mb-4">
-                            <CheckCircle2 size={40} color="#2563EB" />
-                        </View>
-                        <Text className="text-slate-900 text-xl font-bold mb-2">¡Todo al día!</Text>
-                        <Text className="text-slate-500 text-center text-base leading-6">No tienes pruebas pendientes por realizar.</Text>
-                    </View>
-                ) : (
-                    <View className="space-y-4"> 
-                    {pendingTests.map((test) => (
-                        <View key={test.id} className="bg-white rounded-[28px] shadow-sm border border-slate-100 p-6 mb-4">
-                        
-                        <View className="flex-row justify-between items-start mb-4">
-                            <View className="flex-1 mr-4">
-                                <View className="flex-row items-center mb-1">
-                                    <View className="w-2 h-2 rounded-full bg-blue-500 mr-2" />
-                                    <Text className="text-slate-900 text-xl font-bold">{test.name}</Text>
-                                </View>
-                                <Text className="text-sm text-slate-500 leading-5 font-medium" numberOfLines={2}>
-                                    {test.description || "Sin descripción"}
-                                </Text>
-                            </View>
-                            <View className={`px-3 py-1.5 rounded-lg flex-row items-center ${
-                                test.deadlineText === 'Vencida' ? 'bg-red-50' : 'bg-orange-50'
-                            }`}>
-                                <Clock size={12} color={test.deadlineText === 'Vencida' ? '#DC2626' : '#ea580c'} style={{ marginRight: 4 }} />
-                                <Text className={`text-xs font-bold ${
-                                    test.deadlineText === 'Vencida' ? 'text-red-700' : 'text-orange-700'
-                                }`}>
-                                    {test.deadlineText}
-                                </Text>
-                            </View>
-                        </View>
+            {/* Header Modal */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleContainer}>
+                <Target size={20} color={COLORS.primary} style={{marginRight: 8}}/>
+                <Text style={styles.modalTitle}>Detalle del Resultado</Text>
+              </View>
+              <Pressable onPress={() => setShowDetailModal(false)} style={styles.closeButton}>
+                <X size={24} color={COLORS.textMuted} />
+              </Pressable>
+            </View>
 
-                        <View className="flex-row items-center justify-between pt-4 border-t border-slate-50">
-                            <View className="flex-row items-center">
-                                <Calendar size={16} color="#94a3b8" style={{ marginRight: 6 }} />
-                                <Text className="text-slate-400 text-xs font-bold">Asignada: {test.assignedDate}</Text>
-                            </View>
-
-                            <Pressable
-                                onPress={() => navigation.navigate('LogResult', { assignmentId: test.id, testName: test.name })}
-                                className="bg-blue-600 px-5 py-2.5 rounded-xl shadow-sm shadow-blue-200 active:scale-95 flex-row items-center"
-                            >
-                                <Text className="text-white font-bold text-sm mr-1">Iniciar</Text>
-                                <ChevronRight size={16} color="white" />
-                            </Pressable>
-                        </View>
-                        </View>
-                    ))}
-                    </View>
-                )}
+            {selectedResult && (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 20}}>
+                
+                {/* Info Principal */}
+                <View style={styles.detailHero}>
+                  <Text style={styles.detailTestName}>
+                    {selectedResult.prueba_asignada?.prueba?.nombre}
+                  </Text>
+                  <View style={styles.detailDateBadge}>
+                    <Clock size={14} color={COLORS.textMuted} style={{marginRight:4}} />
+                    <Text style={styles.detailDateText}>
+                      Realizado el {new Date(selectedResult.fecha_realizacion).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    </Text>
+                  </View>
                 </View>
+
+                {/* Resultado Grande */}
+                <View style={styles.bigResultBox}>
+                   <Text style={styles.bigResultLabel}>Tu Marca</Text>
+                   <Text style={styles.bigResultValue}>
+                     {selectedResult.valor} 
+                     <Text style={styles.bigResultUnit}> {selectedResult.prueba_asignada?.prueba?.tipo_metrica}</Text>
+                   </Text>
+                </View>
+
+                {/* Descripción Prueba */}
+                <View style={styles.infoSection}>
+                   <Text style={styles.infoLabel}>Sobre la prueba</Text>
+                   <Text style={styles.infoText}>
+                     {selectedResult.prueba_asignada?.prueba?.descripcion || "Sin descripción disponible."}
+                   </Text>
+                </View>
+
+                {/* Comentario Completo */}
+                {selectedResult.comentario && selectedResult.comentario.length > 0 ? (
+                  <View style={styles.commentBox}>
+                    <View style={{flexDirection:'row', alignItems:'center', marginBottom:8}}>
+                       <MessageSquare size={18} color={COLORS.primary} style={{marginRight:6}}/>
+                       <Text style={styles.commentLabel}>Observación del Entrenador</Text>
+                    </View>
+                    <Text style={styles.commentText}>
+                      {selectedResult.comentario[0].mensaje}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.noCommentBox}>
+                    <Text style={styles.noCommentText}>No hay observaciones para este resultado.</Text>
+                  </View>
+                )}
+
+              </ScrollView>
             )}
 
-            {/* TAB HISTORIAL */}
-            {activeTab === 'realizadas' && (
-                <View>
-                {historyTests.length === 0 ? (
-                    <View className="bg-white rounded-[32px] p-8 items-center shadow-sm border border-slate-100 mt-4">
-                        <View className="bg-slate-100 w-20 h-20 rounded-full items-center justify-center mb-4">
-                            <FileText size={32} color="#94a3b8" />
-                        </View>
-                        <Text className="text-slate-900 text-xl font-bold mb-2">Sin Historial</Text>
-                        <Text className="text-slate-500 text-center text-base">Tus resultados aparecerán aquí.</Text>
-                    </View>
-                ) : (
-                    <View>
-                        {historyTests.map((test) => (
-                        <View key={`${test.status}-${test.id}`} className="bg-white rounded-[28px] shadow-sm border border-slate-100 p-5 mb-4">
-                            
-                            <View className="flex-row justify-between items-start mb-4">
-                                <View>
-                                    <Text className="text-slate-900 text-lg font-bold mb-0.5">{test.name}</Text>
-                                    
-                                    {test.status === 'completed' ? (
-                                        <Text className="text-xs text-slate-400 font-medium uppercase">Realizada: {test.date}</Text>
-                                    ) : (
-                                        <View className="flex-row items-center mt-1">
-                                            <AlertCircle size={12} color="#EF4444" style={{marginRight: 4}} />
-                                            <Text className="text-xs text-red-500 font-bold uppercase">Venció: {test.date}</Text>
-                                        </View>
-                                    )}
-                                </View>
-                                
-                                {test.improvement && (
-                                    <View className="bg-emerald-50 px-2.5 py-1 rounded-lg flex-row items-center border border-emerald-100">
-                                        <Trophy size={12} color="#059669" style={{ marginRight: 4 }} />
-                                        <Text className="text-emerald-700 text-xs font-bold">{test.improvement}</Text>
-                                    </View>
-                                )}
-                            </View>
+            <Pressable onPress={() => setShowDetailModal(false)} style={styles.btnCerrar}>
+               <Text style={styles.btnCerrarText}>Cerrar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
-                            {/* ESTADO DE LA PRUEBA */}
-                            {test.status === 'completed' ? (
-                                <View className="bg-slate-50 rounded-2xl p-4 flex-row items-center justify-between border border-slate-100 mb-0">
-                                    <View>
-                                        <Text className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Resultado Final</Text>
-                                        <Text className="text-2xl text-slate-900 font-extrabold tracking-tight">{test.result}</Text>
-                                    </View>
-                                    <View className="bg-white p-2 rounded-xl shadow-sm">
-                                        <CheckCircle2 size={20} color="#2563EB" />
-                                    </View>
-                                </View>
-                            ) : (
-                                // CASO VENCIDA: Sin botón X
-                                <View className="bg-red-50 rounded-2xl p-4 border border-red-100 mb-0">
-                                    <Text className="text-[10px] text-red-400 font-bold uppercase tracking-wider mb-1">Estado</Text>
-                                    <Text className="text-lg text-red-700 font-bold tracking-tight">No Realizada</Text>
-                                </View>
-                            )}
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        
+        {/* HEADER */}
+        <View style={styles.header}>
+          <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+            <ArrowLeft size={24} color={COLORS.textDark} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Historial</Text>
+          <View style={{ width: 40 }} /> 
+        </View>
 
-                        </View>
-                        ))}
-                    </View>
-                )}
-                </View>
+        {/* SEARCH */}
+        <View style={styles.searchContainer}>
+          <View style={styles.searchBar}>
+            <Search size={20} color={COLORS.textMuted} style={{ marginRight: 10 }} />
+            <TextInput
+              placeholder="Buscar prueba..."
+              placeholderTextColor={COLORS.textMuted}
+              value={searchQuery}
+              onChangeText={handleSearch}
+              style={styles.searchInput}
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => handleSearch("")}>
+                <XCircle size={20} color={COLORS.textMuted} />
+              </Pressable>
             )}
+          </View>
+        </View>
 
-            </ScrollView>
+        {/* LISTA */}
+        {loading ? (
+          <View style={styles.centerContent}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+          </View>
+        ) : (
+          <FlatList
+            data={filteredResults}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={renderItem}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <ClipboardList size={48} color={COLORS.borderColor} />
+                <Text style={styles.emptyTitle}>Sin resultados</Text>
+                <Text style={styles.emptySubtitle}>No se encontraron pruebas registradas.</Text>
+              </View>
+            }
+          />
         )}
       </SafeAreaView>
+
+      {/* FOOTER NAV */}
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+        <Pressable onPress={() => navigation.navigate('Dashboard')} style={styles.navItemInactive}>
+          <TrendingUp size={24} color={COLORS.textMuted} strokeWidth={2.5} />
+          <Text style={styles.navTextInactive}>Inicio</Text>
+        </Pressable>
+        <Pressable onPress={() => navigation.navigate('Stats')} style={styles.navItemInactive}>
+          <BarChart3 size={24} color={COLORS.textMuted} strokeWidth={2.5} />
+          <Text style={styles.navTextInactive}>Datos</Text>
+        </Pressable>
+        <Pressable style={styles.navItem}>
+          <View style={styles.navIconActive}>
+            <ClipboardList size={24} color={COLORS.primary} strokeWidth={2.5} />
+          </View>
+          <Text style={styles.navTextActive}>Historial</Text>
+        </Pressable>
+        <Pressable onPress={() => navigation.navigate('Profile')} style={styles.navItemInactive}>
+          <User size={24} color={COLORS.textMuted} strokeWidth={2.5} />
+          <Text style={styles.navTextInactive}>Perfil</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
+
+// --- ESTILOS ---
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+  centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  
+  // Header
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 16 },
+  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.white, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark },
+
+  // Search
+  searchContainer: { paddingHorizontal: 24, paddingBottom: 16 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 16, paddingHorizontal: 16, height: 50, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  searchInput: { flex: 1, fontSize: 16, color: COLORS.textDark },
+
+  // List
+  listContent: { paddingHorizontal: 24, paddingBottom: 100 },
+  card: { backgroundColor: COLORS.white, borderRadius: 20, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: COLORS.borderColor, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+  cardPressed: { backgroundColor: COLORS.background },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  cardIconBg: { width: 44, height: 44, backgroundColor: COLORS.primaryLight, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  testName: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 4 },
+  dateRow: { flexDirection: 'row', alignItems: 'center' },
+  testDate: { fontSize: 12, color: COLORS.textMuted, fontWeight: '500' },
+  badgeContainer: { alignItems: 'flex-end', backgroundColor: COLORS.primaryLight, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  badgeValue: { fontSize: 16, fontWeight: '800', color: COLORS.primary },
+  badgeUnit: { fontSize: 10, color: COLORS.textMuted, fontWeight: '700', textTransform: 'uppercase' },
+  
+  feedbackPreview: { marginTop: 12, backgroundColor: '#f1f5f9', padding: 10, borderRadius: 12, flexDirection: 'row', gap: 8 },
+  feedbackTextPreview: { flex: 1, fontSize: 13, color: COLORS.textDark, fontStyle: 'italic', lineHeight: 18 },
+
+  // Empty State
+  emptyState: { alignItems: 'center', marginTop: 60, opacity: 0.6 },
+  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textMuted, marginTop: 12 },
+  emptySubtitle: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', marginTop: 4, maxWidth: 250 },
+
+  // Footer
+  footer: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.borderColor, flexDirection: 'row', justifyContent: 'space-around', paddingTop: 12 },
+  navItem: { alignItems: 'center', justifyContent: 'center', minWidth: 64 },
+  navItemInactive: { alignItems: 'center', justifyContent: 'center', minWidth: 64, opacity: 0.6 },
+  navIconActive: { backgroundColor: COLORS.primaryLight, paddingHorizontal: 20, paddingVertical: 6, borderRadius: 20, marginBottom: 4 },
+  navTextActive: { fontSize: 10, color: COLORS.primary, fontWeight: 'bold' },
+  navTextInactive: { fontSize: 10, color: COLORS.textMuted, fontWeight: '500', marginTop: 4 },
+
+  // MODAL STYLES
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'flex-end' },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject },
+  modalContent: { backgroundColor: COLORS.white, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, height: '80%', shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitleContainer: { flexDirection: 'row', alignItems: 'center' },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: COLORS.textDark },
+  closeButton: { padding: 8, backgroundColor: COLORS.background, borderRadius: 20 },
+  
+  detailHero: { alignItems: 'center', marginBottom: 24 },
+  detailTestName: { fontSize: 24, fontWeight: '800', color: COLORS.textDark, textAlign: 'center', marginBottom: 8 },
+  detailDateBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  detailDateText: { fontSize: 13, color: COLORS.textMuted, fontWeight: '500' },
+
+  bigResultBox: { backgroundColor: COLORS.primaryLight, borderRadius: 24, padding: 24, alignItems: 'center', marginBottom: 24, borderWidth: 1, borderColor: '#bfdbfe' },
+  bigResultLabel: { fontSize: 14, textTransform: 'uppercase', color: COLORS.primary, fontWeight: '700', marginBottom: 4, letterSpacing: 1 },
+  bigResultValue: { fontSize: 48, fontWeight: '900', color: COLORS.primary },
+  bigResultUnit: { fontSize: 18, fontWeight: '600', color: COLORS.textMuted },
+
+  infoSection: { marginBottom: 24 },
+  infoLabel: { fontSize: 16, fontWeight: '700', color: COLORS.textDark, marginBottom: 8 },
+  infoText: { fontSize: 15, color: COLORS.textMuted, lineHeight: 22 },
+
+  commentBox: { backgroundColor: '#fff7ed', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#ffedd5' },
+  commentLabel: { fontSize: 14, fontWeight: '700', color: '#c2410c' },
+  commentText: { fontSize: 15, color: '#9a3412', lineHeight: 24, fontStyle: 'italic' },
+
+  noCommentBox: { alignItems: 'center', padding: 16, opacity: 0.5 },
+  noCommentText: { color: COLORS.textMuted, fontStyle: 'italic' },
+
+  btnCerrar: { backgroundColor: COLORS.background, paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 20 },
+  btnCerrarText: { color: COLORS.textDark, fontWeight: '700', fontSize: 16 }
+});

@@ -1,165 +1,268 @@
-import React from "react";
-import { View, Text, Pressable, ScrollView, StatusBar } from "react-native";
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  Pressable,
+  ActivityIndicator,
+  StyleSheet,
+  StatusBar,
+  RefreshControl
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { ArrowLeft, Dumbbell, MessageSquare, CheckCircle, Calendar, TrendingUp, Users, ClipboardCheck } from "lucide-react-native";
-import { useAuth } from "../../context/AuthContext"; // <--- IMPORTANTE
+import { 
+  ArrowLeft, 
+  Bell, 
+  MessageSquare, 
+  ClipboardList, 
+  Clock, 
+  CheckCircle2,
+  Calendar
+} from "lucide-react-native";
 
-// Nota: Usamos 'any' en navigation para que sirva tanto en el stack de Aprendiz como de Entrenador sin errores de TS complejos
-type Props = {
-  navigation: any;
+import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../context/AuthContext";
+import { AprendizStackParamList } from "../../navigation/types";
+
+type Props = NativeStackScreenProps<AprendizStackParamList, "Notifications">;
+
+// --- COLORES ---
+const COLORS = {
+  primary: "#2563eb",
+  primaryLight: "#eff6ff",
+  background: "#f8fafc",
+  white: "#ffffff",
+  textDark: "#0f172a",
+  textMuted: "#64748b",
+  borderColor: "#e2e8f0",
+  shadow: "#000000",
+  newBadge: "#ef444498", // Rojo para "Nuevo"
 };
 
-// --- DATOS MOCK: ATLETA ---
-const athleteNotifications = [
-  {
-    id: 1,
-    Icon: Dumbbell,
-    iconBg: 'bg-blue-50',
-    iconColor: '#2563EB',
-    text: 'Tu entrenador te ha asignado una nueva prueba: Test de Cooper.',
-    time: 'Hace 2 horas',
-    unread: true
-  },
-  {
-    id: 2,
-    Icon: MessageSquare,
-    iconBg: 'bg-purple-50',
-    iconColor: '#9333EA',
-    text: 'Has recibido un nuevo feedback de tu entrenador.',
-    time: 'Hace 5 horas',
-    unread: true
-  },
-  {
-    id: 3,
-    Icon: CheckCircle,
-    iconBg: 'bg-emerald-50',
-    iconColor: '#059669',
-    text: 'Tu resultado en la prueba "Sentadilla" ha sido registrado correctamente.',
-    time: 'Hace 1 día',
-    unread: false
-  }
-];
+interface NotificationItem {
+  id: string;
+  type: 'assignment' | 'feedback';
+  title: string;
+  message: string;
+  date: string; // ISO date string
+  read: boolean;
+  relatedId?: number; // ID para navegar (ej. resultado_id)
+}
 
-// --- DATOS MOCK: ENTRENADOR ---
-const coachNotifications = [
-  {
-    id: 1,
-    Icon: ClipboardCheck,
-    iconBg: 'bg-orange-50',
-    iconColor: '#ea580c',
-    text: 'Alex Johnson ha completado la prueba "Test de Cooper". Pendiente de revisión.',
-    time: 'Hace 10 min',
-    unread: true
-  },
-  {
-    id: 2,
-    Icon: Users,
-    iconBg: 'bg-blue-50',
-    iconColor: '#2563EB',
-    text: 'Nuevo atleta "Carlos Rodriguez" se ha unido al grupo "Principiantes".',
-    time: 'Hace 1 hora',
-    unread: true
-  },
-  {
-    id: 3,
-    Icon: Calendar,
-    iconBg: 'bg-indigo-50',
-    iconColor: '#4f46e5',
-    text: 'Recordatorio: Sesión de evaluación con Grupo Avanzado mañana a las 8:00 AM.',
-    time: 'Hace 3 horas',
-    unread: false
-  },
-  {
-    id: 4,
-    Icon: TrendingUp,
-    iconBg: 'bg-emerald-50',
-    iconColor: '#059669',
-    text: 'El grupo "Resistencia" ha mejorado su promedio un 5% esta semana.',
-    time: 'Hace 1 día',
-    unread: false
-  }
-];
+export default function NotificationsScreen({ navigation }: Props) {
+  const { user } = useAuth();
+  
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-export default function Notifications({ navigation }: Props) {
-  // Obtenemos el rol actual para saber qué lista mostrar
-  const { role } = useAuth();
+  useEffect(() => {
+    fetchNotifications();
+  }, [user]);
 
-  // Seleccionamos los datos según el rol
-  const notifications = role === 'entrenador' ? coachNotifications : athleteNotifications;
+  const fetchNotifications = async () => {
+    if (!user) return;
+    
+    try {
+      // 1. Obtener ID del atleta
+      const { data: userData } = await supabase.from('usuario').select('no_documento').eq('auth_id', user.id).single();
+      if (!userData) return;
+      const docId = userData.no_documento;
 
-  return (
-    <View className="flex-1 bg-slate-50">
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
-       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        
-        {/* --- HEADER --- */}
-        <View className="px-6 pt-4 pb-4">
-          <Pressable 
-            onPress={() => navigation.goBack()} 
-            className="w-12 h-12 bg-white rounded-full items-center justify-center shadow-sm border border-slate-200 mb-6 active:bg-slate-50"
-          >
-            <ArrowLeft size={22} color="#334155" />
-          </Pressable>
-          <Text className="text-slate-900 text-3xl font-extrabold tracking-tight">Notificaciones</Text>
-          <Text className="text-slate-500 text-base font-medium mt-1">
-            {role === 'entrenador' ? 'Actividad de tus atletas y grupos' : 'Mantente al día con tus actividades'}
-          </Text>
-        </View>
+      // Calcular fecha de hace 7 días para filtrar "recientes"
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const dateLimit = sevenDaysAgo.toISOString().split('T')[0];
 
-        {/* --- LISTA DE NOTIFICACIONES --- */}
-        <ScrollView 
-          className="flex-1 px-6" 
-          contentContainerStyle={{ paddingBottom: 40 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {notifications.map((notification) => (
-            <Pressable
-              key={notification.id}
-              className={`flex-row p-5 mb-4 rounded-[24px] border items-start active:scale-[0.99] transition-all ${
-                notification.unread 
-                  ? 'bg-white border-blue-200 shadow-sm shadow-blue-100' // Estilo No Leído
-                  : 'bg-white border-slate-100 shadow-sm shadow-slate-200/50' // Estilo Leído
-              }`}
-            >
-              
-              {/* Icono (Izquierda) */}
-              <View className={`${notification.iconBg} w-12 h-12 rounded-2xl items-center justify-center mr-4`}>
-                <notification.Icon size={22} color={notification.iconColor} />
-              </View>
+      // 2. Consultar Nuevas Asignaciones (Últimos 7 días)
+      const { data: assignments, error: assignError } = await supabase
+        .from('prueba_asignada_has_atleta')
+        .select(`
+          prueba_asignada!inner (
+            id,
+            fecha_asignacion,
+            fecha_limite,
+            prueba ( nombre )
+          ),
+          grupo ( nombre )
+        `)
+        .eq('atleta_no_documento', docId)
+        .gte('prueba_asignada.fecha_asignacion', dateLimit);
 
-              {/* Contenido (Centro) */}
-              <View className="flex-1">
-                <Text 
-                  className={`text-base leading-6 mb-1.5 ${
-                    notification.unread ? 'text-slate-900 font-bold' : 'text-slate-600 font-medium'
-                  }`}
-                >
-                  {notification.text}
-                </Text>
-                <Text className="text-xs text-slate-400 font-semibold uppercase tracking-wide">
-                  {notification.time}
-                </Text>
-              </View>
+      if (assignError) throw assignError;
 
-              {/* Indicador de No Leído (Derecha) */}
-              {notification.unread && (
-                <View className="ml-2 mt-2">
-                   <View className="w-2.5 h-2.5 bg-blue-600 rounded-full shadow-sm shadow-blue-500" />
-                </View>
-              )}
-            </Pressable>
-          ))}
+      // 3. Consultar Nuevos Comentarios (Últimos 7 días)
+      // Nota: Comentario -> Resultado -> Atleta
+      const { data: comments, error: commentError } = await supabase
+        .from('comentario')
+        .select(`
+          id,
+          mensaje,
+          fecha,
+          resultado_prueba!inner (
+            id,
+            atleta_no_documento,
+            prueba_asignada ( prueba ( nombre ) )
+          )
+        `)
+        .eq('resultado_prueba.atleta_no_documento', docId)
+        .gte('fecha', dateLimit);
+
+      if (commentError) throw commentError;
+
+      // 4. Unificar y Formatear
+      const formattedNotifications: NotificationItem[] = [];
+
+      // Procesar Asignaciones
+      assignments?.forEach((item: any) => {
+        formattedNotifications.push({
+          id: `assign-${item.prueba_asignada.id}`,
+          type: 'assignment',
+          title: 'Nueva Prueba Asignada',
+          message: `Tu entrenador asignó "${item.prueba_asignada.prueba.nombre}" en el grupo ${item.grupo?.nombre || 'General'}.`,
+          date: item.prueba_asignada.fecha_asignacion,
+          read: false, // Simulado
+        });
+      });
+
+      // Procesar Comentarios
+      comments?.forEach((item: any) => {
+        formattedNotifications.push({
+          id: `comment-${item.id}`,
+          type: 'feedback',
+          title: 'Nuevo Feedback Recibido',
+          message: `Comentario en "${item.resultado_prueba?.prueba_asignada?.prueba?.nombre}": ${item.mensaje}`,
+          date: item.fecha,
+          read: false,
+          relatedId: item.resultado_prueba.id
+        });
+      });
+
+      // Ordenar por fecha descendente (lo más nuevo arriba)
+      formattedNotifications.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      setNotifications(formattedNotifications);
+
+    } catch (err) {
+      console.error("Error cargando notificaciones:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchNotifications();
+  };
+
+  // Renderizado de cada item
+  const renderItem = ({ item }: { item: NotificationItem }) => {
+    const isAssignment = item.type === 'assignment';
+    
+    return (
+      <View style={[styles.card, !item.read && styles.cardUnread]}>
+        <View style={styles.row}>
           
-          {/* Mensaje final de lista */}
-          <View className="items-center mt-4 mb-8">
-            <Text className="text-slate-400 text-xs font-medium">No tienes más notificaciones recientes</Text>
+          {/* Icono */}
+          <View style={[styles.iconBox, isAssignment ? styles.bgBlue : styles.bgOrange]}>
+            {isAssignment ? (
+              <ClipboardList size={20} color={isAssignment ? "#2563eb" : "#ea580c"} />
+            ) : (
+              <MessageSquare size={20} color={isAssignment ? "#2563eb" : "#ea580c"} />
+            )}
           </View>
 
-        </ScrollView>
+          {/* Contenido */}
+          <View style={styles.content}>
+            <View style={styles.headerRow}>
+              <Text style={styles.title}>{item.title}</Text>
+              <Text style={styles.date}>
+                {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </Text>
+            </View>
+            <Text style={styles.message} numberOfLines={2}>
+              {item.message}
+            </Text>
+          </View>
+
+        </View>
+        
+        {/* Indicador de "Nuevo" (Punto rojo) */}
+        {!item.read && <View style={styles.dot} />}
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        
+        {/* Header */}
+        <View style={styles.header}>
+          <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+            <ArrowLeft size={24} color={COLORS.textDark} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Notificaciones</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        {/* Lista */}
+        {loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+          </View>
+        ) : (
+          <FlatList
+            data={notifications}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.list}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Bell size={48} color={COLORS.borderColor} />
+                <Text style={styles.emptyText}>No tienes notificaciones recientes.</Text>
+              </View>
+            }
+          />
+        )}
 
       </SafeAreaView>
     </View>
   );
 }
+
+// --- ESTILOS ---
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 16 },
+  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.white, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark },
+
+  list: { paddingHorizontal: 24, paddingBottom: 20, paddingTop: 10 },
+  
+  card: { backgroundColor: COLORS.white, padding: 16, borderRadius: 20, marginBottom: 12, borderWidth: 1, borderColor: COLORS.borderColor, shadowColor: COLORS.shadow, shadowOffset: {width:0, height:1}, shadowOpacity:0.03, shadowRadius:4, elevation:1 },
+  cardUnread: { backgroundColor: '#ffffff', borderColor: '#bfdbfe' }, // Sutil borde azul si es nuevo
+  
+  row: { flexDirection: 'row', gap: 16 },
+  
+  iconBox: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  bgBlue: { backgroundColor: COLORS.primaryLight },
+  bgOrange: { backgroundColor: '#fff7ed' }, // orange-50
+
+  content: { flex: 1, justifyContent: 'center' },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  title: { fontSize: 14, fontWeight: '700', color: COLORS.textDark },
+  date: { fontSize: 12, color: COLORS.textMuted, fontWeight: '500' },
+  message: { fontSize: 13, color: COLORS.textMuted, lineHeight: 18 },
+
+  dot: { position: 'absolute', top: 16, right: 16, width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.newBadge },
+
+  emptyState: { alignItems: 'center', marginTop: 100, opacity: 0.6 },
+  emptyText: { marginTop: 16, fontSize: 16, color: COLORS.textMuted },
+});
