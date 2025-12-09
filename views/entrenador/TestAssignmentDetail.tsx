@@ -76,7 +76,7 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
     }, []);
 
     // ----------------------------------------------------
-    // 🔥 LÓGICA DE CARGA DE NIVELES (separada para reusar)
+    // 🔥 LÓGICA DE CARGA DE NIVELES (Corregida)
     // ----------------------------------------------------
     useEffect(() => {
         const fetchLevels = async () => {
@@ -84,13 +84,20 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
             try {
                 // Obtener prueba_id desde prueba_asignada
+                // USAMOS .maybeSingle() para evitar el error PGRST116 si no hay resultados (ej. por RLS)
                 const { data: assignmentData, error: assignError } = await supabase
                     .from('prueba_asignada')
                     .select('prueba_id')
                     .eq('id', assignmentId)
-                    .single();
+                    .maybeSingle(); // <-- CORRECCIÓN: Usar maybeSingle
+
+                // Si hay un error de red/BD O si el resultado es nulo (por RLS o ID inexistente)
+                if (assignError) throw assignError;
                 
-                if (assignError || !assignmentData) throw assignError || new Error("Assignment not found.");
+                if (!assignmentData) {
+                    console.log(`[DEBUG] No se encontró asignación con ID: ${assignmentId} (posiblemente RLS activo).`);
+                    throw new Error("Assignment not found or permission denied.");
+                }
 
                 const pruebaId = assignmentData.prueba_id;
 
@@ -99,7 +106,7 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
                     .from('prueba')
                     .select('niveles')
                     .eq('id', pruebaId)
-                    .single();
+                    .single(); // Aquí usamos .single() ya que debe haber 1 prueba
 
                 if (testError || !testData) throw testError || new Error("Test levels not found.");
 
@@ -108,6 +115,8 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
             } catch (err) {
                 console.error("Error fetching test levels:", err);
+                // Si la asignación no se encuentra, establecemos los niveles a vacío para que la carga principal continúe
+                setTestLevels([]); 
             } finally {
                 setLoadingLevels(false);
             }
@@ -131,6 +140,13 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
                     Alert.alert("Error", "No se recibió assignmentId (prueba_asignada_id).");
                     setParticipants([]);
                     return;
+                }
+
+                // Si testLevels está vacío debido al error anterior, no tiene sentido continuar
+                if (testLevels.length === 0) {
+                     console.warn(`[WARNING] No se cargaron niveles para la asignación ID: ${assignmentId}. No se calcularán niveles.`);
+                     // Permitimos continuar si no se puede cargar para al menos mostrar quién está pendiente
+                     // O podrías decidir retornar y mostrar un mensaje de error.
                 }
 
                 // 1) Obtener filas de prueba_asignada_has_atleta para esta asignación
@@ -196,7 +212,6 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
                     const obs = res?.comentario?.[0]?.mensaje ?? ''; // Extrae el mensaje del comentario (array de 1)
                     
                     // Lógica de deficiencia (ejemplo: si el nivel es 'Bajo' o 'Principiante')
-                    // Esto depende de cómo definas el nivel "deficiente" en tus TestRange
                     const isDeficient = level && level.toLowerCase().includes('principiante'); 
 
                     return {
@@ -222,7 +237,7 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
                     const hasPending = built.some(p => p.status === 'pending');
                     
                     if (initialTab) {
-                         setActiveTab(initialTab);
+                            setActiveTab(initialTab);
                     } else {
                         // Asegura que la pestaña activa tenga contenido, si es posible.
                         setActiveTab(hasPending ? 'pending' : (hasCompleted ? 'completed' : 'pending'));
@@ -239,7 +254,7 @@ export default function TestAssignmentDetail({ navigation, route }: Props) {
 
         load();
         return () => { isActive = false; };
-    }, [assignmentId, loadingLevels, calculateLevel]); // Dependencia de loadingLevels y calculateLevel
+    }, [assignmentId, loadingLevels, calculateLevel, testLevels]); // Dependencia de loadingLevels, calculateLevel y testLevels
 
     // Filtrados
     const pendingList = participants.filter(p => p.status === 'pending');
