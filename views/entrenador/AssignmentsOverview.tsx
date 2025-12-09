@@ -103,16 +103,20 @@ export default function AssignmentsOverview({ navigation }: Props) {
                   hideYAxisText
                   hideAxesAndRules
                   height={120}
-                  width={width - 80} // Width calculado manualmente
+                  width={width - 80}
                   startFillColor={selectedGroup.color}
                   endFillColor="rgba(255,255,255,0.01)"
                   startOpacity={0.2}
                   endOpacity={0.01}
                   areaChart
-                  // Props para evitar crash por interacción
-                  pointerConfig={{ pointerStripHeight: 0, pointerStripWidth: 0 }}
-                  pressEnabled={false}
-                  focusEnabled={false}
+                  // Configuración de puntero para minimizar interacciones visuales
+                  pointerConfig={{ 
+                    pointerStripHeight: 0, 
+                    pointerStripWidth: 0,
+                    radius: 0,
+                    hidePointer1: true 
+                  }}
+                  hideDataPoints
                 />
               </View>
 
@@ -181,7 +185,11 @@ export default function AssignmentsOverview({ navigation }: Props) {
                     <Text style={styles.cardGroupSubtitle}>{group.activeTests} pruebas activas</Text>
                   </View>
 
-                  {/* MINI GRÁFICO (pointerEvents="none" CRUCIAL) */}
+                  {/* MINI GRÁFICO:
+                      pointerEvents="none" es la clave aquí. Bloquea cualquier intento 
+                      de interacción táctil, evitando el crash y haciendo que el toque 
+                      pase directo al Pressable padre (abrir modal).
+                  */}
                   <View style={styles.miniChartContainer} pointerEvents="none">
                     <LineChart
                       data={group.trend.map((t: any) => ({ value: Number(t.value) }))}
@@ -195,9 +203,8 @@ export default function AssignmentsOverview({ navigation }: Props) {
                       initialSpacing={10}
                       yAxisOffset={0}
                       adjustToWidth={false}
-                      isAnimated={false}
-                      pressEnabled={false}
-                      focusEnabled={false}
+                      isAnimated={false} // Desactivar animación en miniaturas mejora rendimiento
+                      hideDataPoints // Ocultar puntos para vista más limpia
                     />
                   </View>
 
@@ -315,7 +322,7 @@ export default function AssignmentsOverview({ navigation }: Props) {
   );
 }
 
-// --- ESTILOS PUROS (NO TAILWIND) ---
+// --- ESTILOS PUROS ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
