@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  Pressable, 
-  ScrollView, 
+import {
+  View,
+  Text,
+  Pressable,
+  ScrollView,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -12,10 +12,10 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { 
-  ArrowLeft, 
-  Calendar, 
-  Clock, 
+import {
+  ArrowLeft,
+  Calendar,
+  Clock,
   Target,
   Eye,
   Check,
@@ -25,13 +25,13 @@ import {
 } from "lucide-react-native";
 // IMPORTANTE: El nuevo selector de fecha
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { supabase } from "../../lib/supabase"; 
+import { supabase } from "../../lib/supabase";
 import { EntrenadorStackParamList } from "../../navigation/types";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "AssignTestStep2">;
 
 export default function AssignTestStep2({ navigation, route }: Props) {
-  const { test, targetGroup } = route.params; 
+  const { test, targetGroup } = route.params;
   const insets = useSafeAreaInsets();
 
   // Estados principales
@@ -51,8 +51,8 @@ export default function AssignTestStep2({ navigation, route }: Props) {
   useEffect(() => {
     const loadGroupMembers = async () => {
       if (!targetGroup) {
-          setLoading(false);
-          return;
+        setLoading(false);
+        return;
       }
       try {
         const { data, error } = await supabase
@@ -69,8 +69,8 @@ export default function AssignTestStep2({ navigation, route }: Props) {
         if (error) throw error;
 
         const cleanData = data?.map((item: any) => ({
-           no_documento: item.atleta.no_documento,
-           nombre_completo: item.atleta.usuario?.nombre_completo || "Sin Nombre"
+          no_documento: item.atleta.no_documento,
+          nombre_completo: item.atleta.usuario?.nombre_completo || "Sin Nombre"
         })) || [];
 
         setAthletesToAssign(cleanData);
@@ -98,7 +98,7 @@ export default function AssignTestStep2({ navigation, route }: Props) {
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
     }
-    
+
     if (event.type === 'set' && selectedDate) {
       setDeadlineDate(selectedDate);
     }
@@ -107,19 +107,19 @@ export default function AssignTestStep2({ navigation, route }: Props) {
   // 2. GUARDAR ASIGNACIÓN
   const handleAssign = async () => {
     if (!deadlineDate) {
-        Alert.alert("Falta fecha", "Por favor selecciona una fecha límite tocando el calendario.");
-        return;
+      Alert.alert("Falta fecha", "Por favor selecciona una fecha límite tocando el calendario.");
+      return;
     }
 
     if (athletesToAssign.length === 0) {
-        Alert.alert("Atención", "El grupo está vacío o no se seleccionaron atletas.");
-        return;
+      Alert.alert("Atención", "El grupo está vacío o no se seleccionaron atletas.");
+      return;
     }
-    
+
     setSaving(true);
     try {
       // Usamos la función corregida para obtener la fecha local
-      const todayString = getLocalISOString(new Date()); 
+      const todayString = getLocalISOString(new Date());
       const deadlineString = getLocalISOString(deadlineDate);
 
       // A. Crear Encabezado
@@ -137,10 +137,13 @@ export default function AssignTestStep2({ navigation, route }: Props) {
       const asignacionId = asignacionData.id;
 
       // B. Crear Detalles
+      // B. Crear Detalles (AGREGANDO grupo_codigo)
       const detalleRows = athletesToAssign.map(a => ({
         prueba_asignada_id: asignacionId,
-        atleta_no_documento: a.no_documento
+        atleta_no_documento: a.no_documento,
+        grupo_codigo: targetGroup.codigo   // ← AQUI SE AGREGA LA MAGIA
       }));
+
 
       const { error: detailError } = await supabase
         .from('prueba_asignada_has_atleta')
@@ -149,9 +152,9 @@ export default function AssignTestStep2({ navigation, route }: Props) {
       if (detailError) throw detailError;
 
       Alert.alert(
-        "¡Asignación Exitosa!", 
-        `Prueba asignada correctamente para el ${deadlineString}.`, 
-        [{ text: "Listo", onPress: () => navigation.pop(2) }] 
+        "¡Asignación Exitosa!",
+        `Prueba asignada correctamente para el ${deadlineString}.`,
+        [{ text: "Listo", onPress: () => navigation.pop(2) }]
       );
 
     } catch (error: any) {
@@ -165,18 +168,18 @@ export default function AssignTestStep2({ navigation, route }: Props) {
   return (
     <View className="flex-1 bg-slate-50">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
-       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <KeyboardAvoidingView 
+
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1"
         >
-          
+
           {/* HEADER */}
           <View className="px-6 pt-4 pb-2">
             <View className="flex-row items-center mb-6">
-              <Pressable 
-                onPress={() => navigation.goBack()} 
+              <Pressable
+                onPress={() => navigation.goBack()}
                 className="w-12 h-12 bg-white rounded-full items-center justify-center shadow-sm border border-slate-200 mr-4 active:bg-slate-50"
               >
                 <ArrowLeft size={22} color="#334155" />
@@ -188,26 +191,26 @@ export default function AssignTestStep2({ navigation, route }: Props) {
             </View>
           </View>
 
-          <ScrollView 
+          <ScrollView
             className="flex-1 px-6"
-            contentContainerStyle={{ paddingBottom: 160 }} 
+            contentContainerStyle={{ paddingBottom: 160 }}
             showsVerticalScrollIndicator={false}
           >
-            
+
             {/* RESUMEN PRUEBA */}
             <View className="bg-white rounded-[32px] p-6 mb-6 shadow-sm border border-slate-100 flex-row items-center justify-between">
               <View className="flex-1 mr-4">
                 <View className="flex-row items-center mb-2">
-                    <View className="bg-blue-100 px-2 py-1 rounded-md mr-2">
-                        <Text className="text-[10px] font-bold text-blue-700 uppercase">Seleccionada</Text>
-                    </View>
+                  <View className="bg-blue-100 px-2 py-1 rounded-md mr-2">
+                    <Text className="text-[10px] font-bold text-blue-700 uppercase">Seleccionada</Text>
+                  </View>
                 </View>
                 <Text className="text-slate-900 text-xl font-bold mb-1">{test?.nombre}</Text>
                 <Text className="text-slate-500 text-sm leading-5" numberOfLines={2}>
-                    {test?.descripcion || 'Sin descripción'}
+                  {test?.descripcion || 'Sin descripción'}
                 </Text>
               </View>
-              <Pressable 
+              <Pressable
                 onPress={() => navigation.navigate('TestDetail', { test })}
                 className="bg-blue-50 w-12 h-12 rounded-full items-center justify-center active:bg-blue-100 border border-blue-100"
               >
@@ -217,68 +220,68 @@ export default function AssignTestStep2({ navigation, route }: Props) {
 
             {/* TARJETA GRUPO */}
             {targetGroup && (
-                <View className="bg-blue-600 rounded-[24px] p-6 mb-8 shadow-lg shadow-blue-200">
-                    <View className="flex-row items-center space-x-3 mb-4">
-                        <View className="bg-white/20 p-2 rounded-lg">
-                            <Users size={20} color="white" />
-                        </View>
-                        <View>
-                            <Text className="text-blue-100 text-xs font-medium uppercase">Asignando a Grupo</Text>
-                            <Text className="text-white font-bold text-lg">
-                                {targetGroup.nombre}
-                            </Text>
-                        </View>
-                    </View>
-                    
-                    <View className="bg-white/10 rounded-xl p-4 flex-row items-center">
-                        {loading ? (
-                            <ActivityIndicator color="white" size="small" />
-                        ) : (
-                            <>
-                                <Check size={16} color="#93C5FD" style={{ marginRight: 8 }} />
-                                <Text className="text-white font-medium text-sm">
-                                    {athletesToAssign.length > 0 
-                                        ? `${athletesToAssign.length} atletas recibirán esta prueba`
-                                        : "No se encontraron atletas en este grupo"
-                                    }
-                                </Text>
-                            </>
-                        )}
-                    </View>
+              <View className="bg-blue-600 rounded-[24px] p-6 mb-8 shadow-lg shadow-blue-200">
+                <View className="flex-row items-center space-x-3 mb-4">
+                  <View className="bg-white/20 p-2 rounded-lg">
+                    <Users size={20} color="white" />
+                  </View>
+                  <View>
+                    <Text className="text-blue-100 text-xs font-medium uppercase">Asignando a Grupo</Text>
+                    <Text className="text-white font-bold text-lg">
+                      {targetGroup.nombre}
+                    </Text>
+                  </View>
                 </View>
+
+                <View className="bg-white/10 rounded-xl p-4 flex-row items-center">
+                  {loading ? (
+                    <ActivityIndicator color="white" size="small" />
+                  ) : (
+                    <>
+                      <Check size={16} color="#93C5FD" style={{ marginRight: 8 }} />
+                      <Text className="text-white font-medium text-sm">
+                        {athletesToAssign.length > 0
+                          ? `${athletesToAssign.length} atletas recibirán esta prueba`
+                          : "No se encontraron atletas en este grupo"
+                        }
+                      </Text>
+                    </>
+                  )}
+                </View>
+              </View>
             )}
 
             {/* FECHA LÍMITE (SELECTOR MEJORADO) */}
             <View className="mb-8">
               <Text className="text-slate-700 font-bold text-sm ml-1 mb-3">Fecha Límite</Text>
-              
-              <Pressable 
+
+              <Pressable
                 onPress={() => setShowDatePicker(true)}
                 className="bg-white border border-slate-200 rounded-2xl h-14 flex-row items-center px-4 shadow-sm shadow-slate-200/50 active:bg-slate-50"
               >
                 <Calendar size={20} color="#94a3b8" style={{ marginRight: 12 }} />
-                
+
                 {/* Texto condicional: si hay fecha la muestra, si no muestra placeholder */}
                 {deadlineDate ? (
-                    <Text className="text-slate-900 text-base font-medium">
-                        {/* Mostramos fecha legible ej: 04/12/2025 */}
-                        {deadlineDate.toLocaleDateString()} 
-                    </Text>
+                  <Text className="text-slate-900 text-base font-medium">
+                    {/* Mostramos fecha legible ej: 04/12/2025 */}
+                    {deadlineDate.toLocaleDateString()}
+                  </Text>
                 ) : (
-                    <Text className="text-slate-400 text-base font-medium">
-                        Seleccionar fecha...
-                    </Text>
+                  <Text className="text-slate-400 text-base font-medium">
+                    Seleccionar fecha...
+                  </Text>
                 )}
               </Pressable>
 
               {/* Componente del Selector (Solo visible cuando showDatePicker es true) */}
               {showDatePicker && (
                 <DateTimePicker
-                    value={deadlineDate || new Date()}
-                    mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={onDateChange}
-                    minimumDate={new Date()} // Evita seleccionar el pasado
+                  value={deadlineDate || new Date()}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={onDateChange}
+                  minimumDate={new Date()} // Evita seleccionar el pasado
                 />
               )}
             </View>
@@ -306,28 +309,27 @@ export default function AssignTestStep2({ navigation, route }: Props) {
         </KeyboardAvoidingView>
 
         {/* FOOTER */}
-        <View 
+        <View
           className="absolute bottom-0 w-full bg-white border-t border-slate-100 px-6 pt-4 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]"
           style={{ paddingBottom: Math.max(insets.bottom, 24) }}
         >
           <Pressable
             onPress={handleAssign}
             disabled={loading || saving || athletesToAssign.length === 0}
-            className={`w-full h-14 rounded-2xl flex-row items-center justify-center shadow-lg transition-all active:scale-[0.98] ${
-              !loading && !saving && athletesToAssign.length > 0 && deadlineDate
-                ? 'bg-blue-600 shadow-blue-600/30' 
+            className={`w-full h-14 rounded-2xl flex-row items-center justify-center shadow-lg transition-all active:scale-[0.98] ${!loading && !saving && athletesToAssign.length > 0 && deadlineDate
+                ? 'bg-blue-600 shadow-blue-600/30'
                 : 'bg-slate-200 shadow-none opacity-80'
-            }`}
+              }`}
           >
             {saving ? (
-                 <ActivityIndicator size="small" color="white" />
+              <ActivityIndicator size="small" color="white" />
             ) : (
-                <>
-                    <Clock size={20} color={deadlineDate ? "white" : "#94a3b8"} style={{ marginRight: 8 }} />
-                    <Text className={`font-bold text-lg tracking-wide ${deadlineDate ? 'text-white' : 'text-slate-500'}`}>
-                    Confirmar Asignación
-                    </Text>
-                </>
+              <>
+                <Clock size={20} color={deadlineDate ? "white" : "#94a3b8"} style={{ marginRight: 8 }} />
+                <Text className={`font-bold text-lg tracking-wide ${deadlineDate ? 'text-white' : 'text-slate-500'}`}>
+                  Confirmar Asignación
+                </Text>
+              </>
             )}
           </Pressable>
         </View>
