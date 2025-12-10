@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import {
     View,
     Text,
@@ -24,8 +24,6 @@ import {
     LogOut,
     ChevronRight,
     ClipboardList,
-    TrendingUp,
-    LayoutGrid
 } from "lucide-react-native";
 
 import { useAuth } from "../../context/AuthContext";
@@ -34,70 +32,78 @@ import { supabase } from "../../lib/supabase";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "Dashboard">;
 
-// --- COLORES Y CONSTANTES ---
+// --- COLORES PROFESIONALES ---
 const COLORS = {
-    primary: "#2563eb",     // blue-600
-    primaryLight: "#eff6ff", // blue-50
-    background: "#f8fafc",   // slate-50
+    primary: "#2563eb",
+    primaryLight: "#eff6ff",
+    background: "#F8FAFC",
     white: "#ffffff",
-    textDark: "#0f172a",     // slate-900
-    textMuted: "#64748b",    // slate-500
-    borderColor: "#e2e8f0",  // slate-200
-    shadow: "#000000",
-    success: "#22c55e",      // green-500 (Progreso)
+    textDark: "#0f172a",
+    textMuted: "#64748b",
+    borderColor: "#e2e8f0",
+    shadow: "#64748b",
+    success: "#10b981",
+    danger: "#ef4444", 
+    warning: "#f59e0b",
 };
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-
-// Colores dinámicos para grupos
+// Paleta para avatares de grupos
 const GROUP_COLORS = [
-    { bg: '#e0e7ff', icon: '#4338ca' }, // Indigo
-    { bg: '#dcfce7', icon: '#15803d' }, // Green
-    { bg: '#ffedd5', icon: '#c2410c' }, // Orange
-    { bg: '#dbeafe', icon: '#1d4ed8' }, // Blue
-    { bg: '#f3e8ff', icon: '#7e22ce' }  // Purple
+    { bg: '#e0e7ff', icon: '#4338ca' }, 
+    { bg: '#dcfce7', icon: '#15803d' }, 
+    { bg: '#ffedd5', icon: '#c2410c' }, 
+    { bg: '#dbeafe', icon: '#1d4ed8' }, 
+    { bg: '#f3e8ff', icon: '#7e22ce' } 
 ];
 
 export default function CoachDashboard({ navigation }: Props) {
     const { logout, user } = useAuth();
 
-    // Estados UI
+    // --- ESTADOS UI ---
     const [showProfileModal, setShowProfileModal] = useState(false);
-
-    // Estados Datos
+    
+    // --- ESTADOS DATOS ---
     const [nombre, setNombre] = useState<String>("Entrenador");
     const [recentGroups, setRecentGroups] = useState<any[]>([]);
     const [loadingGroups, setLoadingGroups] = useState(true);
     const [assignedTests, setAssignedTests] = useState<any[]>([]);
     const [loadingAssignments, setLoadingAssignments] = useState(true);
+    const [hasNotifications, setHasNotifications] = useState(false);
 
-    // ======================================================
-    // 1. CARGAR NOMBRE
-    // ======================================================
-    useEffect(() => {
-        const fetchUserData = async () => {
-            if (!user?.id) return;
-            try {
-                const { data } = await supabase
-                    .from('usuario')
-                    .select('nombre_completo')
-                    .eq('auth_id', user.id)
-                    .single();
+    // 1. CARGAR USUARIO Y NOTIFICACIONES
+    useFocusEffect(
+        useCallback(() => {
+            const fetchUserData = async () => {
+                if (!user?.id) return;
+                try {
+                    const { data } = await supabase
+                        .from('usuario')
+                        .select('no_documento, nombre_completo')
+                        .eq('auth_id', user.id)
+                        .single();
 
-                if (data) {
-                    const primer = data.nombre_completo.trim().split(" ")[0];
-                    setNombre(primer.charAt(0).toUpperCase() + primer.slice(1).toLowerCase());
+                    if (data) {
+                        const primer = data.nombre_completo.trim().split(" ")[0];
+                        setNombre(primer.charAt(0).toUpperCase() + primer.slice(1).toLowerCase());
+
+                        // CONSULTA NOTIFICACIONES REALES (No leídas)
+                        const { count } = await supabase
+                            .from('notificacion')
+                            .select('*', { count: 'exact', head: true })
+                            .eq('usuario_no_documento', data.no_documento)
+                            .eq('leido', false);
+                        
+                        setHasNotifications(count !== null && count > 0);
+                    }
+                } catch (e) {
+                    console.error("Error user data:", e);
                 }
-            } catch (e) {
-                console.error(e);
-            }
-        };
-        fetchUserData();
-    }, [user]);
+            };
+            fetchUserData();
+        }, [user])
+    );
 
-    // ======================================================
-    // 2. CARGAR GRUPOS
-    // ======================================================
+    // 2. CARGAR GRUPOS (Con filtro de ACTIVO para Soft Delete)
     useFocusEffect(
         useCallback(() => {
             let isActive = true;
@@ -112,6 +118,7 @@ export default function CoachDashboard({ navigation }: Props) {
                         .from('grupo')
                         .select('*, atleta_has_grupo(count)')
                         .eq('entrenador_no_documento', trainerData.no_documento)
+                        .eq('activo', true) // <--- FILTRO CRÍTICO PARA SOFT DELETE
                         .order('fecha_creacion', { ascending: false })
                         .limit(5);
 
@@ -135,21 +142,18 @@ export default function CoachDashboard({ navigation }: Props) {
         }, [user])
     );
 
-    // ======================================================
-    // 3. CARGAR ASIGNACIONES (CORREGIDO: QUERY INVERTIDA)
-    // ======================================================
+    // 3. CARGAR ASIGNACIONES ACTIVAS
     useFocusEffect(
         useCallback(() => {
             let isActive = true;
 
-            const loadAssignments = async () => {
+            const loadDashboardData = async () => {
                 try {
-                    // 1. Obtener ID del entrenador
                     const { data: trainer } = await supabase.from("usuario").select("no_documento").eq("auth_id", user?.id).single();
                     if (!trainer) return;
 
-                    // 2. Obtener códigos de grupos del entrenador
-                    const { data: myGroups } = await supabase.from("grupo").select("codigo, nombre").eq("entrenador_no_documento", trainer.no_documento);
+                    // B. ASIGNACIONES ACTIVAS
+                    const { data: myGroups } = await supabase.from("grupo").select("codigo, nombre").eq("entrenador_no_documento", trainer.no_documento).eq('activo', true);
 
                     if (!myGroups || myGroups.length === 0) {
                         setAssignedTests([]);
@@ -162,93 +166,65 @@ export default function CoachDashboard({ navigation }: Props) {
 
                     const nowISO = new Date().toISOString();
 
-                    // 3. CONSULTA CORREGIDA
-                    // Buscamos en la tabla intermedia que TIENE el grupo_codigo
-                    // Usamos !inner en prueba_asignada para filtrar por su fecha_limite
-                    const { data: rawData, error } = await supabase
+                    const { data: rawData } = await supabase
                         .from("prueba_asignada_has_atleta")
                         .select(`
                             grupo_codigo,
                             prueba_asignada!inner (
-                                id,
-                                fecha_asignacion,
-                                fecha_limite,
+                                id, fecha_asignacion, fecha_limite,
                                 prueba ( nombre, descripcion )
                             )
                         `)
                         .in("grupo_codigo", groupCodes)
-                        .gte("prueba_asignada.fecha_limite", nowISO) // Filtro de fecha en la tabla relacionada
+                        .gte("prueba_asignada.fecha_limite", nowISO)
                         .order("grupo_codigo");
-                    // Nota: El ordenamiento por fecha anidada es complejo en Supabase JS, lo haremos en cliente si es necesario
-
-                    if (error) throw error;
 
                     if (!rawData || rawData.length === 0) {
                         setAssignedTests([]);
-                        return;
+                    } else {
+                        const uniqueMap = new Map();
+                        rawData.forEach((item: any) => {
+                            const key = `${item.prueba_asignada.id}-${item.grupo_codigo}`;
+                            if (!uniqueMap.has(key)) uniqueMap.set(key, item);
+                        });
+                        
+                        const finalAssignments = await Promise.all(
+                            Array.from(uniqueMap.values()).map(async (item: any) => {
+                                const p = item.prueba_asignada;
+                                
+                                // Calcular progreso real
+                                const { count: total } = await supabase
+                                    .from("prueba_asignada_has_atleta")
+                                    .select("*", { count: "exact", head: true })
+                                    .eq("prueba_asignada_id", p.id);
+
+                                const { count: completed } = await supabase
+                                    .from("resultado_prueba")
+                                    .select("*", { count: "exact", head: true })
+                                    .eq("prueba_asignada_id", p.id);
+
+                                return {
+                                    id: p.id,
+                                    test: p.prueba?.nombre || "Prueba",
+                                    groupName: groupMap[item.grupo_codigo] ?? "Grupo",
+                                    completed: completed ?? 0,
+                                    total: total ?? 0,
+                                    progress: (total && total > 0) ? Math.round(((completed ?? 0) / total) * 100) : 0,
+                                    deadline: p.fecha_limite,
+                                };
+                            })
+                        );
+                        if (isActive) setAssignedTests(finalAssignments);
                     }
 
-                    // 4. DESDUPLICACIÓN (Vital porque rawData trae una fila por CADA alumno)
-                    // Usamos un Map donde la clave es "ID_Prueba-Codigo_Grupo"
-                    const uniqueAssignmentsMap = new Map();
-
-                    rawData.forEach((item: any) => {
-                        const key = `${item.prueba_asignada.id}-${item.grupo_codigo}`;
-                        if (!uniqueAssignmentsMap.has(key)) {
-                            uniqueAssignmentsMap.set(key, item);
-                        }
-                    });
-
-                    const uniqueAssignments = Array.from(uniqueAssignmentsMap.values());
-
-                    // 5. Calcular progresos
-                    const finalData = await Promise.all(
-                        uniqueAssignments.map(async (item: any) => {
-                            const p = item.prueba_asignada;
-                            const assignmentId = p.id;
-
-                            // Total de atletas asignados a esta prueba
-                            const { count: totalCount } = await supabase
-                                .from("prueba_asignada_has_atleta")
-                                .select("*", { count: "exact", head: true })
-                                .eq("prueba_asignada_id", assignmentId);
-
-                            // Total de resultados subidos
-                            const { count: completedCount } = await supabase
-                                .from("resultado_prueba")
-                                .select("*", { count: "exact", head: true })
-                                .eq("prueba_asignada_id", assignmentId);
-
-                            const completed = completedCount ?? 0;
-                            const total = totalCount ?? 0;
-
-                            return {
-                                id: assignmentId,
-                                test: p.prueba?.nombre || "Prueba",
-                                descripcion: p.prueba?.descripcion,
-                                fecha: p.fecha_asignacion,
-                                groupName: groupMap[item.grupo_codigo] ?? "Grupo",
-                                completed,
-                                total,
-                                progress: total > 0 ? Math.round((completed / total) * 100) : 0,
-                                deadline: p.fecha_limite,
-                            };
-                        })
-                    );
-
-                    // Ordenar por fecha límite (más urgente primero)
-                    finalData.sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
-
-                    if (isActive) setAssignedTests(finalData);
-
                 } catch (err) {
-                    console.error("Error loading assignments:", err);
+                    console.error("Error loading dashboard:", err);
                 } finally {
                     if (isActive) setLoadingAssignments(false);
                 }
             };
 
-            loadAssignments();
+            loadDashboardData();
             return () => { isActive = false };
         }, [user])
     );
@@ -303,15 +279,15 @@ export default function CoachDashboard({ navigation }: Props) {
                 {/* HEADER */}
                 <View style={styles.header}>
                     <View>
-                        <Text style={styles.headerSubtitle}>Panel de Control</Text>
+                        <Text style={styles.headerSubtitle}>Panel de Entrenador</Text>
                         <Text style={styles.headerTitle}>Hola, {nombre}</Text>
                     </View>
 
                     <View style={styles.headerIcons}>
+                        {/* NOTIFICACIONES CON PUNTO ROJO REAL */}
                         <Pressable onPress={() => navigation.navigate('Notifications')} style={styles.iconButton}>
                             <Bell size={22} color={COLORS.textMuted} />
-                            {/* Punto de notificación (hardcoded example) */}
-                            <View style={styles.notificationDot} />
+                            {hasNotifications && <View style={styles.notificationDot} />}
                         </Pressable>
 
                         <Pressable onPress={() => setShowProfileModal(true)} style={[styles.iconButton, styles.profileButton]}>
@@ -320,12 +296,9 @@ export default function CoachDashboard({ navigation }: Props) {
                     </View>
                 </View>
 
-                <ScrollView
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={styles.scrollContent}
-                >
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-                    {/* SECCIÓN 1: ACCIONES RÁPIDAS (Estilo Grid) */}
+                    {/* 1. ACCIONES RÁPIDAS */}
                     <View style={styles.quickActionsContainer}>
                         <Pressable
                             onPress={() => navigation.navigate('CoachReports')}
@@ -350,7 +323,7 @@ export default function CoachDashboard({ navigation }: Props) {
                         </Pressable>
                     </View>
 
-                    {/* SECCIÓN 2: ESTADO DE ASIGNACIONES (Carrusel) */}
+                    {/* 2. ASIGNACIONES ACTIVAS */}
                     <View style={styles.sectionContainer}>
                         <View style={styles.sectionHeader}>
                             <Text style={styles.sectionTitle}>Asignaciones Activas</Text>
@@ -360,68 +333,64 @@ export default function CoachDashboard({ navigation }: Props) {
                         </View>
 
                         {loadingAssignments ? (
-                            <ActivityIndicator size="small" color={COLORS.primary} style={{ alignSelf: 'flex-start', marginLeft: 24 }} />
+                            <ActivityIndicator size="small" color={COLORS.primary} style={{ marginLeft: 24 }} />
+                        ) : assignedTests.length === 0 ? (
+                            <View style={styles.emptyStateBox}>
+                                <ClipboardList size={32} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
+                                <Text style={styles.emptyStateText}>No tienes pruebas en curso.</Text>
+                                <Pressable onPress={() => navigation.navigate('ManageTests')}>
+                                    <Text style={styles.emptyStateLink}>Crear Asignación</Text>
+                                </Pressable>
+                            </View>
                         ) : (
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
-                                {assignedTests.length === 0 ? (
-                                    <View style={styles.emptyStateBox}>
-                                        <ClipboardList size={32} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
-                                        <Text style={styles.emptyStateText}>No tienes pruebas activas.</Text>
-                                        <Pressable onPress={() => navigation.navigate('ManageTests')}>
-                                            <Text style={styles.emptyStateLink}>Asignar una prueba</Text>
-                                        </Pressable>
-                                    </View>
-                                ) : (
-                                    assignedTests.map(item => (
-                                        <Pressable
-                                            key={item.id}
-                                            onPress={() => navigation.navigate("TestAssignmentDetail", {
-                                                assignmentId: item.id,
-                                                testName: item.test,
-                                                groupName: item.groupName
-                                            })}
-                                            style={({ pressed }) => [styles.assignmentCard, pressed && styles.cardPressed]}
-                                        >
-                                            <View style={styles.assignmentHeader}>
-                                                <View style={{ flex: 1, marginRight: 8 }}>
-                                                    <Text style={styles.assignmentGroup} numberOfLines={1}>{item.groupName}</Text>
-                                                    <Text style={styles.assignmentTest} numberOfLines={1}>{item.test}</Text>
-                                                </View>
-                                                <View style={styles.deadlineBadge}>
-                                                    <Text style={styles.deadlineText}>{item.deadline || "—"}</Text>
-                                                </View>
+                                {assignedTests.map(item => (
+                                    <Pressable
+                                        key={item.id}
+                                        onPress={() => navigation.navigate("TestAssignmentDetail", {
+                                            assignmentId: item.id,
+                                            testName: item.test,
+                                            groupName: item.groupName
+                                        })}
+                                        style={({ pressed }) => [styles.assignmentCard, pressed && styles.cardPressed]}
+                                    >
+                                        <View style={styles.assignmentHeader}>
+                                            <View style={{ flex: 1, marginRight: 8 }}>
+                                                <Text style={styles.assignmentGroup} numberOfLines={1}>{item.groupName}</Text>
+                                                <Text style={styles.assignmentTest} numberOfLines={1}>{item.test}</Text>
                                             </View>
-
-                                            <View style={styles.progressContainer}>
-                                                <View style={styles.progressTextRow}>
-                                                    <Text style={styles.progressLabel}>Progreso</Text>
-                                                    <Text style={styles.progressValue}>{item.completed}/{item.total}</Text>
-                                                </View>
-                                                <View style={styles.progressBarBg}>
-                                                    <View style={[styles.progressBarFill, { width: `${item.progress}%` }]} />
-                                                </View>
+                                            <View style={styles.deadlineBadge}>
+                                                <Text style={styles.deadlineText}>{new Date(item.deadline).toLocaleDateString(undefined, {month:'numeric', day:'numeric'})}</Text>
                                             </View>
-                                        </Pressable>
-                                    ))
-                                )}
+                                        </View>
+                                        <View style={styles.progressContainer}>
+                                            <View style={styles.progressTextRow}>
+                                                <Text style={styles.progressLabel}>Entregas</Text>
+                                                <Text style={styles.progressValue}>{item.completed}/{item.total}</Text>
+                                            </View>
+                                            <View style={styles.progressBarBg}>
+                                                <View style={[styles.progressBarFill, { width: `${item.progress}%` }]} />
+                                            </View>
+                                        </View>
+                                    </Pressable>
+                                ))}
                             </ScrollView>
                         )}
                     </View>
 
-                    {/* SECCIÓN 3: GRUPOS (Carrusel Compacto) */}
+                    {/* 3. MIS GRUPOS */}
                     <View style={styles.sectionContainer}>
                         <View style={styles.sectionHeader}>
                             <Text style={styles.sectionTitle}>Mis Grupos</Text>
                             <Pressable onPress={() => navigation.navigate('MyGroups')}>
-                                <Text style={styles.linkText}>Ver todos</Text>
+                                <Text style={styles.linkText}>Gestionar</Text>
                             </Pressable>
                         </View>
 
                         {loadingGroups ? (
-                            <ActivityIndicator size="small" color={COLORS.primary} style={{ alignSelf: 'flex-start', marginLeft: 24 }} />
+                            <ActivityIndicator size="small" color={COLORS.primary} style={{ marginLeft: 24 }} />
                         ) : (
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
-                                {/* Create New Card */}
                                 <Pressable
                                     onPress={() => navigation.navigate('CreateGroup')}
                                     style={({ pressed }) => [styles.createGroupCard, pressed && styles.cardPressed]}
@@ -429,10 +398,9 @@ export default function CoachDashboard({ navigation }: Props) {
                                     <View style={styles.createIconBg}>
                                         <Plus size={24} color={COLORS.textMuted} />
                                     </View>
-                                    <Text style={styles.createGroupText}>Crear Nuevo</Text>
+                                    <Text style={styles.createGroupText}>Nuevo Grupo</Text>
                                 </Pressable>
 
-                                {/* Group List */}
                                 {recentGroups.length > 0 ? recentGroups.map((group, i) => {
                                     const theme = GROUP_COLORS[i % GROUP_COLORS.length];
                                     return (
@@ -446,10 +414,10 @@ export default function CoachDashboard({ navigation }: Props) {
                                             ]}
                                         >
                                             <View style={styles.groupHeader}>
-                                                <View style={styles.groupIconCircle}>
+                                                <View style={[styles.groupIconCircle, { backgroundColor: 'rgba(255,255,255,0.7)' }]}>
                                                     <Users size={16} color={theme.icon} />
                                                 </View>
-                                                <View style={styles.memberBadge}>
+                                                <View style={[styles.memberBadge, { backgroundColor: 'rgba(255,255,255,0.7)' }]}>
                                                     <Text style={[styles.memberCount, { color: theme.icon }]}>{group.members}</Text>
                                                 </View>
                                             </View>
@@ -473,17 +441,16 @@ export default function CoachDashboard({ navigation }: Props) {
     );
 }
 
-// --- ESTILOS ESTRICTOS ---
+// --- ESTILOS OPTIMIZADOS ---
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,
     },
     scrollContent: {
-        paddingBottom: 120,
+        paddingBottom: 40,
         paddingTop: 10,
     },
-    // HEADER
     header: {
         flexDirection: "row",
         justifyContent: "space-between",
@@ -527,13 +494,13 @@ const styles = StyleSheet.create({
         right: 12,
         width: 8,
         height: 8,
-        backgroundColor: '#ef4444',
+        backgroundColor: COLORS.danger,
         borderRadius: 4,
         borderWidth: 1,
         borderColor: COLORS.white,
     },
-
-    // ACTIONS
+    
+    // Quick Actions
     quickActionsContainer: {
         flexDirection: 'row',
         paddingHorizontal: 24,
@@ -576,7 +543,7 @@ const styles = StyleSheet.create({
         color: COLORS.textMuted,
     },
 
-    // SECTIONS
+    // Sections
     sectionContainer: {
         marginBottom: 24,
     },
@@ -601,9 +568,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
     },
 
-    // ASSIGNMENTS
+    // ASSIGNMENT CARDS
     assignmentCard: {
-        width: 280,
+        width: 260,
         backgroundColor: COLORS.white,
         borderRadius: 20,
         padding: 16,
@@ -672,10 +639,10 @@ const styles = StyleSheet.create({
         borderRadius: 3,
     },
 
-    // GROUPS
+    // GROUP CARDS
     createGroupCard: {
-        width: 140,
-        height: 140,
+        width: 130,
+        height: 130,
         borderRadius: 24,
         borderWidth: 2,
         borderColor: COLORS.borderColor,
@@ -694,8 +661,8 @@ const styles = StyleSheet.create({
         color: COLORS.textMuted,
     },
     groupCard: {
-        width: 140,
-        height: 140,
+        width: 130,
+        height: 130,
         borderRadius: 24,
         padding: 16,
         marginRight: 12,
@@ -709,13 +676,11 @@ const styles = StyleSheet.create({
     groupIconCircle: {
         width: 32,
         height: 32,
-        backgroundColor: 'rgba(255,255,255,0.6)',
         borderRadius: 16,
         justifyContent: 'center',
         alignItems: 'center',
     },
     memberBadge: {
-        backgroundColor: 'rgba(255,255,255,0.6)',
         paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 8,
@@ -733,7 +698,7 @@ const styles = StyleSheet.create({
 
     // EMPTY STATES
     emptyStateBox: {
-        width: 280,
+        width: 260,
         height: 120,
         justifyContent: 'center',
         alignItems: 'center',

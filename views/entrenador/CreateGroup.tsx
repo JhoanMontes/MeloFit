@@ -7,7 +7,6 @@ import {
   ScrollView, 
   KeyboardAvoidingView, 
   Platform,
-  Alert,
   StatusBar,
   StyleSheet,
   ActivityIndicator
@@ -23,6 +22,7 @@ import {
 import { EntrenadorStackParamList } from "../../navigation/types";
 import { supabase } from "./../../lib/supabase"; 
 import { useAuth } from "./../../context/AuthContext";
+import CustomAlert, { AlertType } from "../../components/CustomAlert";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "CreateGroup">;
 
@@ -46,6 +46,33 @@ export default function CreateGroup({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
+
+  // --- ESTADO PARA CUSTOM ALERT ---
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info" as AlertType,
+    buttonText: "Entendido",
+    onAction: undefined as (() => void) | undefined,
+  });
+
+  const showAlert = (
+    title: string, 
+    message: string, 
+    type: AlertType = "info", 
+    onAction?: () => void,
+    buttonText: string = "Entendido"
+  ) => {
+    setAlertConfig({ visible: true, title, message, type, onAction, buttonText });
+  };
+
+  const closeAlert = () => {
+    setAlertConfig(prev => ({ ...prev, visible: false }));
+    if (alertConfig.onAction) {
+      alertConfig.onAction();
+    }
+  };
 
   // --- LÓGICA DE NEGOCIO ---
 
@@ -76,7 +103,7 @@ export default function CreateGroup({ navigation }: Props) {
 
   const handleCreateGroup = async () => {
     if (!groupName.trim()) {
-      Alert.alert("Falta el nombre", "Por favor asigna un nombre al grupo.");
+      showAlert("Falta el nombre", "Por favor asigna un nombre al grupo.", "warning");
       return;
     }
 
@@ -101,7 +128,7 @@ export default function CreateGroup({ navigation }: Props) {
         .maybeSingle();
 
       if (existingGroup) {
-        Alert.alert("Nombre duplicado", "Ya tienes un grupo con este nombre. Por favor elige otro.");
+        showAlert("Nombre duplicado", "Ya tienes un grupo con este nombre. Por favor elige otro.", "warning");
         setLoading(false);
         return;
       }
@@ -109,7 +136,7 @@ export default function CreateGroup({ navigation }: Props) {
       // Generar Código
       const uniqueCode = await verificarCodigoGrupo();
 
-      // Insertar
+      // Insertar (Asegurando 'activo: true' para Soft Delete compatibility)
       const { error: insertError } = await supabase
         .from('grupo')
         .insert({
@@ -117,18 +144,24 @@ export default function CreateGroup({ navigation }: Props) {
           descripcion: groupDescription.trim(),
           codigo: uniqueCode,
           entrenador_no_documento: trainerId,
-          fecha_creacion: new Date(), 
+          fecha_creacion: new Date(),
+          activo: true 
         });
 
       if (insertError) throw insertError;
 
-      Alert.alert("¡Grupo Creado!", `Código: ${uniqueCode}\nEl grupo "${groupName}" está listo.`, [
-        { text: "Ir a Mis Grupos", onPress: () => navigation.navigate('MyGroups') }
-      ]);
+      // ÉXITO: Mostrar código y navegar al cerrar
+      showAlert(
+        "¡Grupo Creado!", 
+        `Código de acceso: ${uniqueCode}\nEl grupo "${groupName}" está listo para recibir atletas.`, 
+        "success",
+        () => navigation.navigate('MyGroups'),
+        "Ir a Mis Grupos"
+      );
 
     } catch (error: any) {
       console.error(error);
-      Alert.alert("Error", error.message || "No se pudo crear el grupo");
+      showAlert("Error", error.message || "No se pudo crear el grupo", "error");
     } finally {
       setLoading(false);
     }
@@ -140,6 +173,17 @@ export default function CreateGroup({ navigation }: Props) {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
+      {/* ALERT COMPONENT */}
+      <CustomAlert 
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        buttonText={alertConfig.buttonText}
+        onClose={closeAlert}
+        // En este caso usamos onClose para manejar la acción del botón único
+      />
+
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === "ios" ? "padding" : "height"}

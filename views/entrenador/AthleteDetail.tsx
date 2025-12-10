@@ -15,6 +15,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { EntrenadorStackParamList } from "../../navigation/types";
 import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../context/AuthContext";
 
 // --- CONSTANTES DE DISEÑO ---
 const COLORS = {
@@ -39,7 +40,7 @@ interface TestItem {
     deadline?: string;
     status: 'pending' | 'completed';
     result?: string;
-    score?: string;
+    score?: string; // Aquí guardaremos la unidad formateada (ej: "Min")
 }
 
 interface AthleteProfile {
@@ -51,7 +52,8 @@ interface AthleteProfile {
 }
 
 export default function AthleteDetail({ navigation, route }: Props) {
-    const { athlete } = route.params || {}; // athlete.id es el documento
+    const { user } = useAuth();
+    const { athlete } = route.params || {}; 
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -63,81 +65,145 @@ export default function AthleteDetail({ navigation, route }: Props) {
     const [pendingTests, setPendingTests] = useState<TestItem[]>([]);
     const [historyTests, setHistoryTests] = useState<TestItem[]>([]);
 
+    // --- HELPER: FORMATEO DE UNIDADES ---
+    const formatUnit = (raw: string | null) => {
+        if (!raw) return '';
+        const r = raw.toLowerCase();
+        
+        if (r === 'time_min' || r.includes('minutos') || r.includes('minute')) return 'Min';
+        if (r === 'time_sec' || r.includes('segundos') || r.includes('second')) return 'Seg';
+        if (r.includes('rep')) return 'Reps';
+        if (r.includes('kilo') || r.includes('kg')) return 'Kg';
+        if (r.includes('metr')) return 'm';
+        
+        return raw; 
+    };
+
     // ----------------------------------------------------------------------
-    // 1. CARGA DE DATOS (CORREGIDA CON ESQUEMA REAL)
+    // 1. CARGA DE DATOS OPTIMIZADA
     // ----------------------------------------------------------------------
     const fetchData = useCallback(async () => {
-        if (!athlete?.id) return;
+        if (!athlete?.id || !user?.id) return;
 
         try {
             setLoading(true);
 
-            // A. Cargar Perfil Físico (Tabla 'atleta')
-            // CORRECCIÓN: Usamos 'estatura' en vez de 'altura' según tu tabla.
-            const { data: athleteData, error: profileError } = await supabase
+            // 1. OBTENER ID DEL ENTRENADOR
+            const { data: currentCoach, error: coachError } = await supabase
+                .from('usuario')
+                .select('no_documento')
+                .eq('auth_id', user.id)
+                .single();
+
+            if (coachError || !currentCoach) throw new Error("No se pudo identificar al entrenador");
+            const coachId = currentCoach.no_documento;
+
+            // 2. CARGAR PERFIL
+            const { data: athleteData } = await supabase
                 .from('atleta')
                 .select(`
-                    peso, 
-                    estatura, 
-                    fecha_nacimiento, 
-                    usuario!atleta_no_documento_fkey (
-                        nombre_completo
-                    )
+                    peso, estatura, fecha_nacimiento, 
+                    usuario!atleta_no_documento_fkey ( nombre_completo )
                 `)
                 .eq('no_documento', athlete.id)
-                .single(); // .single() es importante aquí porque buscamos por PK
-
-            if (profileError) {
-                console.error("Error perfil:", profileError);
-            }
+                .single();
 
             if (athleteData) {
-                // Validación robusta para el usuario anidado (Objeto vs Array)
-                const userData: any = Array.isArray(athleteData.usuario)
-                    ? athleteData.usuario[0]
-                    : athleteData.usuario;
-
-                // Calcular edad
+                const userData: any = Array.isArray(athleteData.usuario) ? athleteData.usuario[0] : athleteData.usuario;
                 let ageStr = '--';
                 if (athleteData.fecha_nacimiento) {
                     const diff = Date.now() - new Date(athleteData.fecha_nacimiento).getTime();
                     const ageDate = new Date(diff);
                     ageStr = Math.abs(ageDate.getUTCFullYear() - 1970).toString();
                 }
-
                 setProfile({
                     weight: athleteData.peso ? `${athleteData.peso} kg` : '--',
-                    // CORRECCIÓN: Mapeamos 'estatura'
-                    height: athleteData.estatura ? `${athleteData.estatura} m` : '--',
+                    height: athleteData.estatura ? `${athleteData.estatura} cm` : '--',
                     age: ageStr !== '--' ? `${ageStr} años` : '--',
                     name: userData?.nombre_completo || athlete.name,
                     role: 'Atleta'
                 });
             }
 
-            // B. Cargar Pruebas (Tabla intermedia 'prueba_asignada_has_atleta')
-            const { data: testsData, error: testsError } = await supabase
+            // 3. CARGAR RESULTADOS (HISTORIAL) PRIMERO
+            const { data: historyData, error: historyError } = await supabase
+                .from('resultado_prueba')
+                .select(`
+                    valor,
+                    fecha_realizacion,
+                    prueba_asignada_id,
+                    prueba_asignada!inner (
+                        id,
+                        prueba:prueba_id ( 
+                            nombre, 
+                            tipo_metrica,
+                            entrenador_no_documento
+                        )
+                    )
+                `)
+                .eq('atleta_no_documento', athlete.id)
+                .order('fecha_realizacion', { ascending: false });
+
+            if (historyError) throw historyError;
+
+            const completedAssignmentIds = new Set(); 
+            const historyList: TestItem[] = [];
+
+            if (historyData) {
+                historyData.forEach((res: any) => {
+                    // Guardamos ID completado para filtrar pendientes después
+                    if (res.prueba_asignada_id) {
+                        completedAssignmentIds.add(res.prueba_asignada_id);
+                    }
+
+                    // Armamos lista historial visual (solo mis pruebas)
+                    const p = res.prueba_asignada?.prueba;
+                    if (p && p.entrenador_no_documento === coachId) {
+                        historyList.push({
+                            assignmentId: res.prueba_asignada.id,
+                            testName: p.nombre,
+                            date: res.fecha_realizacion,
+                            status: 'completed',
+                            result: res.valor,
+                            // APLICAMOS LA CONVERSIÓN DE UNIDAD AQUÍ
+                            score: formatUnit(p.tipo_metrica) 
+                        });
+                    }
+                });
+            }
+            setHistoryTests(historyList);
+
+            // 4. CARGAR ASIGNACIONES Y FILTRAR PENDIENTES
+            const { data: assignmentsData, error: assignError } = await supabase
                 .from('prueba_asignada_has_atleta')
                 .select(`
                     prueba_asignada:prueba_asignada_id (
                         id,
                         fecha_limite,
                         fecha_asignacion,
-                        prueba:prueba_id ( nombre )
+                        prueba:prueba_id ( 
+                            nombre,
+                            entrenador_no_documento 
+                        )
                     )
                 `)
                 .eq('atleta_no_documento', athlete.id);
 
-            if (testsError) throw testsError;
+            if (assignError) throw assignError;
 
-            const pending: TestItem[] = [];
+            const pendingList: TestItem[] = [];
 
-            // Procesar pruebas
-            if (testsData) {
-                testsData.forEach((item: any) => {
+            if (assignmentsData) {
+                assignmentsData.forEach((item: any) => {
                     const assign = item.prueba_asignada;
-                    if (assign) {
-                        pending.push({
+                    
+                    // FILTRO 1: Creada por mí
+                    // FILTRO 2: NO está en la lista de completadas
+                    if (assign && 
+                        assign.prueba?.entrenador_no_documento === coachId && 
+                        !completedAssignmentIds.has(assign.id) 
+                    ) {
+                        pendingList.push({
                             assignmentId: assign.id,
                             testName: assign.prueba?.nombre || 'Prueba',
                             date: assign.fecha_asignacion,
@@ -148,24 +214,29 @@ export default function AthleteDetail({ navigation, route }: Props) {
                 });
             }
 
-            setPendingTests(pending);
-            setHistoryTests([]); // Lógica de historial pendiente de definir resultados
+            // Ordenar por urgencia
+            pendingList.sort((a, b) => {
+                if (!a.deadline) return 1;
+                if (!b.deadline) return -1;
+                return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+            });
+
+            setPendingTests(pendingList);
 
         } catch (e) {
-            console.error("Error general:", e);
+            console.error("Error cargando detalle atleta:", e);
             Alert.alert("Error", "No se pudieron cargar los datos.");
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [athlete?.id]);
+    }, [athlete?.id, user?.id]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
 
     const handleRegisterResult = (test: TestItem) => {
-       
         navigation.navigate('SendFeedback', {
             result: {
                 athleteId: parseInt(athlete.id), 
@@ -175,9 +246,7 @@ export default function AthleteDetail({ navigation, route }: Props) {
             }
         });
     };
-    // ----------------------------------------------------------------------
-    // RENDER
-    // ----------------------------------------------------------------------
+
     return (
         <View style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
@@ -194,7 +263,6 @@ export default function AthleteDetail({ navigation, route }: Props) {
                         </View>
                     </View>
 
-                    {/* PERFIL INFO */}
                     <View style={styles.profileRow}>
                         <View style={styles.avatarLarge}>
                             <Ionicons name="person" size={32} color={COLORS.primary} />
@@ -205,7 +273,6 @@ export default function AthleteDetail({ navigation, route }: Props) {
                         </View>
                     </View>
 
-                    {/* STATS GRID */}
                     <View style={styles.statsContainer}>
                         <View style={[styles.statItem, styles.borderRight]}>
                             <Text style={styles.statLabel}>EDAD</Text>
@@ -221,14 +288,13 @@ export default function AthleteDetail({ navigation, route }: Props) {
                         </View>
                     </View>
 
-                    {/* TABS */}
                     <View style={styles.tabContainer}>
                         <Pressable
                             onPress={() => setActiveTab('pending')}
                             style={[styles.tab, activeTab === 'pending' && styles.activeTab]}
                         >
                             <Text style={[styles.tabText, activeTab === 'pending' && styles.activeTabText]}>
-                                Pendientes
+                                Pendientes ({pendingTests.length})
                             </Text>
                         </Pressable>
                         <Pressable
@@ -242,7 +308,7 @@ export default function AthleteDetail({ navigation, route }: Props) {
                     </View>
                 </View>
 
-                {/* LISTA DE CONTENIDO */}
+                {/* LISTA */}
                 <ScrollView
                     contentContainerStyle={styles.scrollContent}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} />}
@@ -253,7 +319,8 @@ export default function AthleteDetail({ navigation, route }: Props) {
                         <View>
                             {pendingTests.length === 0 ? (
                                 <View style={styles.emptyState}>
-                                    <Text style={styles.emptyText}>No hay pruebas pendientes</Text>
+                                    <Ionicons name="clipboard-outline" size={48} color={COLORS.borderColor} />
+                                    <Text style={styles.emptyText}>No tienes pruebas pendientes con este atleta.</Text>
                                 </View>
                             ) : (
                                 pendingTests.map((item, index) => (
@@ -272,9 +339,9 @@ export default function AthleteDetail({ navigation, route }: Props) {
 
                                         <Pressable
                                             onPress={() => handleRegisterResult(item)}
-                                            style={styles.actionButton}
+                                            style={({pressed}) => [styles.actionButton, pressed && { opacity: 0.8 }]}
                                         >
-                                            <Text style={styles.actionButtonText}>Registrar</Text>
+                                            <Text style={styles.actionButtonText}>Evaluar</Text>
                                         </Pressable>
                                     </View>
                                 ))
@@ -284,14 +351,15 @@ export default function AthleteDetail({ navigation, route }: Props) {
                         <View>
                             {historyTests.length === 0 ? (
                                 <View style={styles.emptyState}>
-                                    <Text style={styles.emptyText}>No hay historial disponible</Text>
+                                    <Ionicons name="list-outline" size={48} color={COLORS.borderColor} />
+                                    <Text style={styles.emptyText}>No hay historial disponible para tus pruebas.</Text>
                                 </View>
                             ) : (
                                 historyTests.map((item, index) => (
-                                    <View key={index} style={[styles.card, { opacity: 0.8 }]}>
+                                    <View key={index} style={[styles.card, { opacity: 0.9 }]}>
                                         <View style={styles.cardLeft}>
                                             <View style={styles.iconBoxGreen}>
-                                                <Ionicons name="checkmark" size={20} color={COLORS.success} />
+                                                <Ionicons name="checkmark-done" size={20} color={COLORS.success} />
                                             </View>
                                             <View>
                                                 <Text style={styles.cardTitle}>{item.testName}</Text>
@@ -300,6 +368,7 @@ export default function AthleteDetail({ navigation, route }: Props) {
                                         </View>
                                         <View style={{ alignItems: 'flex-end' }}>
                                             <Text style={styles.resultValue}>{item.result}</Text>
+                                            {/* AQUÍ SE MUESTRA LA UNIDAD FORMATEADA */}
                                             <Text style={styles.resultScore}>{item.score}</Text>
                                         </View>
                                     </View>
@@ -340,13 +409,13 @@ const styles = StyleSheet.create({
         borderColor: COLORS.borderColor,
     },
     statusBadge: {
-        backgroundColor: '#DCFCE7', // Green 100
+        backgroundColor: '#DCFCE7', 
         paddingHorizontal: 12,
         paddingVertical: 4,
         borderRadius: 20,
     },
     statusText: {
-        color: '#15803D', // Green 700
+        color: '#15803D', 
         fontSize: 10,
         fontWeight: '800',
         textTransform: 'uppercase',
@@ -359,7 +428,7 @@ const styles = StyleSheet.create({
     avatarLarge: {
         width: 64,
         height: 64,
-        backgroundColor: '#DBEAFE', // Blue 100
+        backgroundColor: '#DBEAFE', 
         borderRadius: 32,
         justifyContent: 'center',
         alignItems: 'center',
@@ -377,8 +446,6 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         color: COLORS.textMuted,
     },
-
-    // Stats
     statsContainer: {
         flexDirection: 'row',
         backgroundColor: COLORS.cardBg,
@@ -404,7 +471,7 @@ const styles = StyleSheet.create({
     statLabel: {
         fontSize: 10,
         fontWeight: '800',
-        color: '#94A3B8', // Slate 400
+        color: '#94A3B8', 
         textTransform: 'uppercase',
         marginBottom: 4,
     },
@@ -413,8 +480,6 @@ const styles = StyleSheet.create({
         fontWeight: '800',
         color: COLORS.textDark,
     },
-
-    // Tabs
     tabContainer: {
         flexDirection: 'row',
         backgroundColor: COLORS.cardBg,
@@ -431,7 +496,7 @@ const styles = StyleSheet.create({
         borderRadius: 8,
     },
     activeTab: {
-        backgroundColor: '#EFF6FF', // Blue 50
+        backgroundColor: '#EFF6FF', 
     },
     tabText: {
         fontSize: 14,
@@ -442,8 +507,6 @@ const styles = StyleSheet.create({
         color: COLORS.primary,
         fontWeight: '700',
     },
-
-    // Content
     scrollContent: {
         paddingHorizontal: 24,
         paddingBottom: 40,
@@ -462,7 +525,7 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.05,
         shadowRadius: 2,
-        elevation: 1,
+        elevation: 2,
     },
     cardLeft: {
         flexDirection: 'row',
@@ -504,6 +567,11 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 10,
+        elevation: 2,
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
     },
     actionButtonText: {
         color: 'white',
@@ -516,16 +584,20 @@ const styles = StyleSheet.create({
         color: COLORS.textDark,
     },
     resultScore: {
-        fontSize: 12,
+        fontSize: 10,
         fontWeight: '700',
-        color: COLORS.success,
+        color: COLORS.textMuted,
+        textTransform: 'uppercase'
     },
     emptyState: {
         alignItems: 'center',
-        marginTop: 20,
+        marginTop: 40,
+        padding: 20,
+        opacity: 0.6
     },
     emptyText: {
         color: COLORS.textMuted,
         fontStyle: 'italic',
+        marginTop: 8
     },
 });

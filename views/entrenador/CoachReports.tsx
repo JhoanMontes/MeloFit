@@ -7,7 +7,8 @@ import {
   Modal, 
   Alert,
   ActivityIndicator,
-  Platform
+  Platform,
+  StyleSheet
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -21,15 +22,11 @@ import {
   Calendar as CalendarIcon,
   Users,
   User,
-  Activity
+  Activity,
+  BarChart3
 } from "lucide-react-native";
 
-// --- SOLUCIÓN DE IMPORTACIONES ---
 import * as Sharing from 'expo-sharing';
-import * as XLSX from 'xlsx';
-
-// 1. Importamos desde 'legacy' para recuperar writeAsStringAsync
-// 2. Usamos @ts-ignore para evitar que TypeScript se queje si no encuentra los tipos legacy
 // @ts-ignore 
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -39,19 +36,27 @@ import { useAuth } from "../../context/AuthContext";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "CoachReports">;
 
+// --- COLORES ---
+const COLORS = {
+  primary: "#2563EB",
+  background: "#F8FAFC",
+  card: "#FFFFFF",
+  text: "#0F172A",
+  border: "#E2E8F0"
+};
+
 export default function CoachReports({ navigation }: Props) {
   const { user } = useAuth();
   
-  // --- ESTADOS ---
   const [loadingData, setLoadingData] = useState(false);
   const [generating, setGenerating] = useState(false);
   
-  // Datos
+  // Datos para filtros
   const [myAthletes, setMyAthletes] = useState<{label: string, value: string, email: string}[]>([]);
   const [myGroups, setMyGroups] = useState<{label: string, value: string, emails: string[]}[]>([]);
   const [myTests, setMyTests] = useState<{label: string, value: string}[]>([]);
 
-  // Filtros
+  // Filtros seleccionados
   const [filters, setFilters] = useState({
     type: '' as 'athlete' | 'group' | 'test' | 'all' | '',
     selection: '', 
@@ -62,8 +67,6 @@ export default function CoachReports({ navigation }: Props) {
   // UI Modales
   const [showTypeModal, setShowTypeModal] = useState(false);
   const [showSelectionModal, setShowSelectionModal] = useState(false);
-  
-  // Date Pickers
   const [showPickerFrom, setShowPickerFrom] = useState(false);
   const [showPickerTo, setShowPickerTo] = useState(false);
 
@@ -74,7 +77,7 @@ export default function CoachReports({ navigation }: Props) {
     { label: "General (Todos)", value: "all", icon: FileSpreadsheet },
   ];
 
-  // 1. CARGAR DATOS
+  // 1. CARGAR DATOS DE FILTROS
   useEffect(() => {
     const loadFilterData = async () => {
       if (!user) return;
@@ -83,10 +86,12 @@ export default function CoachReports({ navigation }: Props) {
         const { data: trainer } = await supabase.from('usuario').select('no_documento').eq('auth_id', user.id).single();
         if (!trainer) return;
 
+        // Cargar Grupos
         const { data: groups } = await supabase
           .from('grupo')
           .select(`codigo, nombre, atleta_has_grupo(atleta(usuario(email)))`)
-          .eq('entrenador_no_documento', trainer.no_documento);
+          .eq('entrenador_no_documento', trainer.no_documento)
+          .eq('activo', true);
 
         if (groups) {
             const formattedGroups = groups.map(g => ({
@@ -97,6 +102,7 @@ export default function CoachReports({ navigation }: Props) {
             setMyGroups(formattedGroups);
         }
 
+        // Cargar Atletas
         const { data: athletesData } = await supabase
             .from('atleta_has_grupo')
             .select(`atleta(no_documento, usuario(nombre_completo, email))`)
@@ -117,7 +123,12 @@ export default function CoachReports({ navigation }: Props) {
             setMyAthletes(Array.from(map.values()));
         }
 
-        const { data: tests } = await supabase.from('prueba').select('id, nombre');
+        // Cargar Pruebas
+        const { data: tests } = await supabase
+            .from('prueba')
+            .select('id, nombre')
+            .eq('entrenador_no_documento', trainer.no_documento);
+            
         if (tests) {
             setMyTests(tests.map(t => ({ label: t.nombre, value: String(t.id) })));
         }
@@ -131,7 +142,127 @@ export default function CoachReports({ navigation }: Props) {
     loadFilterData();
   }, [user]);
 
-  // 2. GENERAR Y COMPARTIR
+  // --- GENERADOR DE HTML ESTILIZADO ---
+  const createHTMLReport = (
+    title: string, 
+    subtitle: string, 
+    performanceData: any[], 
+    physicalData: any[] | null
+  ) => {
+    return `
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; }
+          .header { background-color: #2563EB; color: white; padding: 20px; text-align: center; }
+          .header h1 { margin: 0; font-size: 24px; }
+          .header p { margin: 5px 0 0; font-size: 14px; opacity: 0.9; }
+          
+          .section { margin: 20px; }
+          .section-title { 
+            color: #2563EB; 
+            border-bottom: 2px solid #2563EB; 
+            padding-bottom: 5px; 
+            margin-bottom: 10px; 
+            font-size: 18px; 
+            font-weight: bold;
+          }
+
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+          th { 
+            background-color: #1E293B; 
+            color: white; 
+            padding: 10px; 
+            text-align: left; 
+            border: 1px solid #0F172A;
+          }
+          td { 
+            padding: 8px; 
+            border: 1px solid #CBD5E1; 
+            color: #334155;
+          }
+          tr:nth-child(even) { background-color: #F1F5F9; }
+          
+          .tag-good { color: #16A34A; font-weight: bold; }
+          .tag-alert { color: #EA580C; font-weight: bold; }
+          .footer { font-size: 10px; color: #94A3B8; text-align: center; margin-top: 30px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>${title}</h1>
+          <p>${subtitle}</p>
+          <p>Generado: ${new Date().toLocaleDateString()}</p>
+        </div>
+
+        ${physicalData && physicalData.length > 0 ? `
+          <div class="section">
+            <div class="section-title">Evolución Física (Salud)</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>FECHA REGISTRO</th>
+                  <th>PESO (KG)</th>
+                  <th>ESTATURA (CM)</th>
+                  <th>IMC</th>
+                  <th>% GRASA</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${physicalData.map(d => `
+                  <tr>
+                    <td>${new Date(d.fecha_registro).toLocaleDateString()}</td>
+                    <td>${d.peso || '-'}</td>
+                    <td>${d.estatura || '-'}</td>
+                    <td>${d.imc || '-'}</td>
+                    <td>${d.porcentaje_grasa ? d.porcentaje_grasa + '%' : '-'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : ''}
+
+        <div class="section">
+          <div class="section-title">Resultados de Rendimiento</div>
+          ${performanceData.length === 0 ? '<p>No hay resultados registrados en este periodo.</p>' : `
+            <table>
+              <thead>
+                <tr>
+                  <th>FECHA</th>
+                  <th>ATLETA</th>
+                  <th>PRUEBA</th>
+                  <th>RESULTADO</th>
+                  <th>GRUPO</th>
+                  <th>OBSERVACIONES</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${performanceData.map(r => `
+                  <tr>
+                    <td>${new Date(r.fecha_realizacion).toLocaleDateString()}</td>
+                    <td><b>${r.atleta.usuario.nombre_completo}</b></td>
+                    <td>${r.prueba_asignada.prueba.nombre}</td>
+                    <td style="font-size:14px; font-weight:bold; color:#2563EB;">${r.valor}</td>
+                    <td>${r.atleta.atleta_has_grupo?.[0]?.grupo?.nombre || 'General'}</td>
+                    <td>${r.comentario?.[0]?.mensaje || '-'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>
+
+        <div class="footer">
+          Reporte generado automáticamente por MeloFit App.
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
+  // 2. GENERAR REPORTE
   const generateAndShareReport = async () => {
     setGenerating(true);
     try {
@@ -141,155 +272,84 @@ export default function CoachReports({ navigation }: Props) {
             return;
         }
 
-        // QUERY
-        const { data: results, error } = await supabase
+        // A. CONSULTA DE RENDIMIENTO (Performance)
+        let query = supabase
             .from('resultado_prueba')
             .select(`
                 valor,
                 fecha_realizacion,
                 atleta!inner (
                     no_documento,
-                    estatura, 
-                    peso,
                     usuario ( nombre_completo, email ),
-                    atleta_has_grupo (
-                        grupo ( codigo, nombre )
-                    )
+                    atleta_has_grupo ( grupo ( nombre ) )
                 ),
                 prueba_asignada!inner (
-                    id,
-                    prueba ( id, nombre, descripcion )
-                )
+                    prueba ( id, nombre, tipo_metrica )
+                ),
+                comentario ( mensaje )
             `)
             .gte('fecha_realizacion', filters.dateFrom.toISOString())
             .lte('fecha_realizacion', filters.dateTo.toISOString())
             .order('fecha_realizacion', { ascending: false });
 
-        if (error) throw new Error(error.message);
+        // Filtros JS para rendimiento
+        const { data: results, error } = await query;
+        if (error) throw error;
 
-        let processedData = results || [];
-
-        // FILTRADO JS
+        let filteredResults = results || [];
         if (filters.type === 'athlete' && filters.selection) {
-            processedData = processedData.filter((r: any) => 
-                String(r.atleta.no_documento) === filters.selection
-            );
-        } 
-        else if (filters.type === 'group' && filters.selection) {
-            processedData = processedData.filter((r: any) => {
-                const gruposDelAtleta = r.atleta.atleta_has_grupo || [];
-                return gruposDelAtleta.some((g: any) => g.grupo.codigo === filters.selection);
-            });
-        } 
-        else if (filters.type === 'test' && filters.selection) {
-            processedData = processedData.filter((r: any) => 
-                String(r.prueba_asignada.prueba.id) === filters.selection
-            );
+            filteredResults = filteredResults.filter((r: any) => String(r.atleta.no_documento) === filters.selection);
+        } else if (filters.type === 'test' && filters.selection) {
+            filteredResults = filteredResults.filter((r: any) => String(r.prueba_asignada.prueba.id) === filters.selection);
         }
 
-        if (processedData.length === 0) {
-            Alert.alert("Sin datos", "No se encontraron resultados con los filtros actuales.");
-            setGenerating(false);
-            return;
+        // B. CONSULTA DE HISTORIAL FÍSICO (Solo si es por atleta)
+        let physicalHistory = null;
+        if (filters.type === 'athlete' && filters.selection) {
+            const { data: physData } = await supabase
+                .from('historial_fisico')
+                .select('*')
+                .eq('atleta_no_documento', filters.selection)
+                .gte('fecha_registro', filters.dateFrom.toISOString())
+                .order('fecha_registro', { ascending: false });
+            
+            physicalHistory = physData;
         }
 
-        // MAPEO
-        const excelRows = processedData.map((item: any) => {
-            const atleta = item.atleta;
-            const prueba = item.prueba_asignada.prueba;
+        // C. CONSTRUCCIÓN DEL REPORTE
+        const title = filters.type === 'athlete' 
+            ? `Reporte Individual: ${myAthletes.find(a => a.value === filters.selection)?.label}`
+            : "Reporte General de Rendimiento";
             
-            const grupos = atleta.atleta_has_grupo?.map((g: any) => g.grupo?.nombre).join(", ") || "Sin Grupo";
-            
-            let imc = "N/A";
-            let valoracion = "Pendiente"; 
-            
-            if (atleta.peso && atleta.estatura) {
-                const alturaM = atleta.estatura > 3 ? atleta.estatura / 100 : atleta.estatura;
-                const calculo = (atleta.peso / (alturaM * alturaM));
-                imc = calculo.toFixed(1);
-                
-                if (calculo < 18.5) valoracion = "Bajo Peso";
-                else if (calculo < 24.9) valoracion = "Normal";
-                else if (calculo < 29.9) valoracion = "Sobrepeso";
-                else valoracion = "Obesidad";
-            }
+        const subtitle = `Periodo: ${filters.dateFrom.toLocaleDateString()} - ${filters.dateTo.toLocaleDateString()}`;
 
-            return {
-                "FECHA": new Date(item.fecha_realizacion).toLocaleDateString(),
-                "ATLETA": atleta.usuario?.nombre_completo || "Desconocido",
-                "GRUPOS": grupos,
-                "PRUEBA": prueba?.nombre || "Prueba",
-                "RESULTADO": item.valor,
-                "ESTATURA (m)": atleta.estatura ? (atleta.estatura > 3 ? atleta.estatura/100 : atleta.estatura) : "-",
-                "PESO (kg)": atleta.peso || "-",
-                "IMC": imc,
-                "VALORACIÓN": valoracion,
-                "EMAIL": atleta.usuario?.email || "-"
-            };
-        });
+        const htmlContent = createHTMLReport(title, subtitle, filteredResults, physicalHistory);
 
-        // GENERAR EXCEL
-        const ws = XLSX.utils.json_to_sheet(excelRows);
-        ws['!cols'] = [
-            { wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, 
-            { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, 
-            { wch: 15 }, { wch: 25 }
-        ];
-
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Reporte Rendimiento");
-        const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
-        
-        // --- GUARDAR ARCHIVO (FIX LEGACY) ---
-        const fileName = `Reporte_${filters.type}_${Date.now()}.xlsx`;
-        
-        // Obtenemos el directorio. Si documentDirectory no existe en legacy (raro pero posible), usamos cacheDirectory
+        // D. GUARDAR Y COMPARTIR
+        const fileName = `Reporte_${filters.type}_${Date.now()}.xls`; // .xls para que Excel lo abra como HTML
         const dir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
         const uri = dir + fileName;
 
-        // Escribimos usando la función legacy con el string 'base64' manual
-        await FileSystem.writeAsStringAsync(uri, wbout, {
-            encoding: 'base64'
-        });
-
-        // COMPARTIR
-        let recipients: string[] = [];
-        if (filters.type === 'athlete' && filters.selection) {
-            const ath = myAthletes.find(a => a.value === filters.selection);
-            if (ath?.email) recipients.push(ath.email);
-        } else if (filters.type === 'group' && filters.selection) {
-            const grp = myGroups.find(g => g.value === filters.selection);
-            if (grp?.emails) recipients = [...grp.emails];
-        }
-        if (user?.email) recipients.push(user.email);
-        recipients = [...new Set(recipients)].filter(Boolean);
+        await FileSystem.writeAsStringAsync(uri, htmlContent, { encoding: FileSystem.EncodingType.UTF8 });
 
         if (await Sharing.isAvailableAsync()) {
             await Sharing.shareAsync(uri, {
-                mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                dialogTitle: `Enviar reporte`,
-                UTI: 'com.microsoft.excel.xlsx'
+                mimeType: 'application/vnd.ms-excel',
+                dialogTitle: 'Compartir Reporte MeloFit'
             });
-            
-            if (recipients.length > 0) {
-                 Alert.alert(
-                    "Reporte Listo", 
-                    `Sugerencia: Puedes enviarlo a:\n\n${recipients.slice(0, 3).join('\n')}${recipients.length > 3 ? '...' : ''}`
-                );
-            }
         } else {
-            Alert.alert("Error", "Compartir no disponible.");
+            Alert.alert("Error", "Compartir no disponible en este dispositivo.");
         }
 
     } catch (error: any) {
-        console.error("Error generando Excel:", error);
-        Alert.alert("Error", `No se pudo generar el reporte: ${error.message || "Error desconocido"}`);
+        console.error("Error reporte:", error);
+        Alert.alert("Error", "No se pudo generar el reporte.");
     } finally {
         setGenerating(false);
     }
   };
 
-  // UI HELPERS
+  // --- UI HELPERS ---
   const getOptions = () => {
     switch(filters.type) {
         case 'athlete': return myAthletes;
@@ -302,216 +362,173 @@ export default function CoachReports({ navigation }: Props) {
   const getLabel = (opts: any[], val: string) => opts.find(o => o.value === val)?.label || "Seleccionar...";
   const getTypeLabel = () => reportTypes.find(t => t.value === filters.type)?.label || "Seleccionar Tipo";
 
-  const onChangeDateFrom = (event: any, selectedDate?: Date) => {
-    setShowPickerFrom(Platform.OS === 'ios');
-    if (selectedDate) setFilters({...filters, dateFrom: selectedDate});
-    if (Platform.OS === 'android') setShowPickerFrom(false);
-  };
-
-  const onChangeDateTo = (event: any, selectedDate?: Date) => {
-    setShowPickerTo(Platform.OS === 'ios');
-    if (selectedDate) setFilters({...filters, dateTo: selectedDate});
-    if (Platform.OS === 'android') setShowPickerTo(false);
+  const onDateChange = (isFrom: boolean, event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+        if (isFrom) setShowPickerFrom(false); else setShowPickerTo(false);
+    }
+    if (selectedDate) {
+        if (isFrom) setFilters({...filters, dateFrom: selectedDate});
+        else setFilters({...filters, dateTo: selectedDate});
+    }
   };
 
   return (
-    <View className="flex-1 bg-[#F5F5F7]">
+    <View style={styles.container}>
        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
           
-          <View className="px-6 pt-4 pb-2">
-            <View className="flex-row items-center mb-6">
-              <Pressable 
-                onPress={() => navigation.goBack()} 
-                className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm border border-gray-100 mr-4"
-              >
-                <ArrowLeft size={20} color="#334155" />
+          {/* HEADER */}
+          <View style={styles.header}>
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+                <ArrowLeft size={20} color={COLORS.text} />
               </Pressable>
-              <View>
-                <Text className="text-gray-900 text-2xl font-bold">Reportes Excel</Text>
-                <Text className="text-gray-500 text-sm">Exporta rendimiento y métricas</Text>
-              </View>
+              <Text style={styles.headerTitle}>Reportes Inteligentes</Text>
             </View>
+            <Text style={styles.headerSubtitle}>Genera informes detallados en Excel</Text>
           </View>
 
-          <ScrollView className="flex-1 px-6 pt-2" contentContainerStyle={{ paddingBottom: 120 }}>
+          <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 100 }}>
             
-            <View className="bg-white rounded-3xl p-5 mb-4 shadow-sm">
-              <Text className="text-gray-900 font-bold text-base mb-1">Configuración</Text>
-              <Text className="text-gray-500 text-xs mb-4">Define el alcance de los datos</Text>
-
-              <View className="space-y-4">
-                <View>
-                  <Text className="text-sm font-medium text-gray-700 mb-2 ml-1">Tipo de Filtro</Text>
-                  <Pressable
-                    onPress={() => setShowTypeModal(true)}
-                    className="flex-row items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl px-4 h-14"
-                  >
-                    <View className="flex-row items-center gap-3">
-                        {filters.type ? (
-                            React.createElement(reportTypes.find(t=>t.value===filters.type)?.icon || FileSpreadsheet, {size: 20, color: '#2563eb'})
-                        ) : null}
-                        <Text className={`text-base ${filters.type ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>
+            {/* 1. SECCIÓN TIPO */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>¿Qué deseas analizar?</Text>
+              
+              <Pressable
+                onPress={() => setShowTypeModal(true)}
+                style={styles.dropdown}
+              >
+                <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
+                    {filters.type ? (
+                        React.createElement(reportTypes.find(t=>t.value===filters.type)?.icon || FileSpreadsheet, {size: 20, color: COLORS.primary})
+                    ) : <FileSpreadsheet size={20} color="#94a3b8" />}
+                    
+                    <Text style={[styles.dropdownText, filters.type ? {color: COLORS.text, fontWeight:'600'} : {color: '#94a3b8'}]}>
                         {getTypeLabel()}
-                        </Text>
-                    </View>
-                    <ChevronDown size={20} color="#6B7280" />
-                  </Pressable>
-                </View>
-
-                {filters.type && filters.type !== 'all' && (
-                  <View>
-                    <Text className="text-sm font-medium text-gray-700 mb-2 ml-1">
-                      {filters.type === 'athlete' ? 'Atleta Específico' : 
-                       filters.type === 'group' ? 'Grupo Específico' : 'Prueba Específica'}
                     </Text>
-                    {loadingData ? (
-                        <ActivityIndicator color="#2563eb" style={{ alignSelf: 'flex-start', marginLeft: 10 }} />
-                    ) : (
-                        <Pressable
-                        onPress={() => setShowSelectionModal(true)}
-                        className="flex-row items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl px-4 h-14"
-                        >
-                        <Text className={`text-base ${filters.selection ? 'text-gray-900' : 'text-gray-400'}`} numberOfLines={1}>
-                            {getLabel(getOptions(), filters.selection)}
-                        </Text>
-                        <ChevronDown size={20} color="#6B7280" />
-                        </Pressable>
-                    )}
-                  </View>
-                )}
-              </View>
+                </View>
+                <ChevronDown size={20} color="#64748b" />
+              </Pressable>
+
+              {filters.type && filters.type !== 'all' && (
+                <Pressable
+                    onPress={() => setShowSelectionModal(true)}
+                    style={[styles.dropdown, { marginTop: 12 }]}
+                >
+                    <Text style={[styles.dropdownText, filters.selection ? {color: COLORS.text} : {color: '#94a3b8'}]}>
+                        {getLabel(getOptions(), filters.selection)}
+                    </Text>
+                    <ChevronDown size={20} color="#64748b" />
+                </Pressable>
+              )}
             </View>
 
-            <View className="bg-white rounded-3xl p-5 mb-4 shadow-sm">
-              <Text className="text-gray-900 font-bold text-base mb-1">Periodo de Análisis</Text>
-              <Text className="text-gray-500 text-xs mb-4">Selecciona el rango de fechas</Text>
-
-              <View className="flex-row gap-3">
-                <View className="flex-1 space-y-2">
-                  <Text className="text-gray-700 text-xs font-bold ml-1">Desde</Text>
-                  <Pressable 
-                    onPress={() => setShowPickerFrom(true)}
-                    className="bg-gray-50 border border-gray-200 rounded-2xl px-3 h-12 flex-row items-center justify-between"
-                  >
-                    <Text className="text-gray-900 text-sm font-medium">
-                        {filters.dateFrom.toLocaleDateString()}
-                    </Text>
-                    <CalendarIcon size={16} color="#64748b" />
-                  </Pressable>
-                  {showPickerFrom && (
-                    <DateTimePicker
-                        value={filters.dateFrom}
-                        mode="date"
-                        display="default"
-                        onChange={onChangeDateFrom}
-                        maximumDate={new Date()}
-                    />
-                  )}
+            {/* 2. SECCIÓN FECHAS */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Rango de Fechas</Text>
+              <View style={{flexDirection: 'row', gap: 12}}>
+                <View style={{flex: 1}}>
+                    <Text style={styles.label}>Desde</Text>
+                    <Pressable onPress={() => setShowPickerFrom(true)} style={styles.dateInput}>
+                        <CalendarIcon size={18} color="#64748b" />
+                        <Text style={styles.dateText}>{filters.dateFrom.toLocaleDateString()}</Text>
+                    </Pressable>
                 </View>
-
-                <View className="flex-1 space-y-2">
-                  <Text className="text-gray-700 text-xs font-bold ml-1">Hasta</Text>
-                  <Pressable 
-                    onPress={() => setShowPickerTo(true)}
-                    className="bg-gray-50 border border-gray-200 rounded-2xl px-3 h-12 flex-row items-center justify-between"
-                  >
-                    <Text className="text-gray-900 text-sm font-medium">
-                        {filters.dateTo.toLocaleDateString()}
-                    </Text>
-                    <CalendarIcon size={16} color="#64748b" />
-                  </Pressable>
-                  {showPickerTo && (
-                    <DateTimePicker
-                        value={filters.dateTo}
-                        mode="date"
-                        display="default"
-                        onChange={onChangeDateTo}
-                        minimumDate={filters.dateFrom}
-                        maximumDate={new Date()}
-                    />
-                  )}
+                <View style={{flex: 1}}>
+                    <Text style={styles.label}>Hasta</Text>
+                    <Pressable onPress={() => setShowPickerTo(true)} style={styles.dateInput}>
+                        <CalendarIcon size={18} color="#64748b" />
+                        <Text style={styles.dateText}>{filters.dateTo.toLocaleDateString()}</Text>
+                    </Pressable>
                 </View>
               </View>
             </View>
 
-            <View className="bg-white rounded-3xl p-5 mb-6 shadow-sm border border-gray-100 flex-row gap-4">
-              <View className="bg-green-50 p-3 rounded-2xl h-12 w-12 items-center justify-center">
-                <FileSpreadsheet size={24} color="#16A34A" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-gray-900 font-bold text-sm mb-1">Incluido en el Excel:</Text>
-                <View className="flex-row flex-wrap gap-2 mt-1">
-                    {["Resultados", "Fechas", "IMC Calculado", "Grupos"].map((tag, i) => (
-                        <View key={i} className="bg-gray-100 px-2 py-1 rounded-md">
-                            <Text className="text-[10px] text-gray-600 font-bold">{tag}</Text>
-                        </View>
-                    ))}
+            {/* INFO PREVIEW */}
+            <View style={styles.infoBox}>
+                <BarChart3 size={24} color={COLORS.primary} />
+                <View style={{flex: 1}}>
+                    <Text style={styles.infoTitle}>Contenido del Reporte</Text>
+                    <Text style={styles.infoDesc}>
+                        {filters.type === 'athlete' 
+                            ? "Incluye tabla de resultados deportivos y tabla de evolución física (Peso, IMC, Grasa)."
+                            : "Incluye tabla detallada de resultados, promedios y observaciones por grupo."}
+                    </Text>
                 </View>
-              </View>
             </View>
 
           </ScrollView>
 
-        <View className="absolute bottom-0 w-full bg-white border-t border-gray-100 p-6 shadow-lg pb-8">
-          <Pressable
-            onPress={generateAndShareReport}
-            disabled={generating || (!filters.type) || (filters.type !== 'all' && !filters.selection)}
-            className={`w-full h-14 rounded-2xl flex-row items-center justify-center shadow-lg ${
-              (generating || (!filters.type) || (filters.type !== 'all' && !filters.selection))
-                ? 'bg-gray-300' 
-                : 'bg-green-600 shadow-green-200'
-            }`}
-          >
-            {generating ? (
-                <ActivityIndicator color="white" />
-            ) : (
-                <>
-                    <Download size={22} color="white" style={{ marginRight: 8 }} />
-                    <Text className="text-white font-bold text-lg">Generar y Enviar</Text>
-                </>
-            )}
-          </Pressable>
-        </View>
+          {/* FOOTER */}
+          <View style={styles.footer}>
+            <Pressable
+                onPress={generateAndShareReport}
+                disabled={generating || (!filters.type) || (filters.type !== 'all' && !filters.selection)}
+                style={({pressed}) => [
+                    styles.generateButton, 
+                    (generating || !filters.type) && styles.buttonDisabled,
+                    pressed && styles.buttonPressed
+                ]}
+            >
+                {generating ? <ActivityIndicator color="white" /> : (
+                    <>
+                        <Download size={20} color="white" style={{marginRight: 8}} />
+                        <Text style={styles.buttonText}>Descargar Reporte Excel</Text>
+                    </>
+                )}
+            </Pressable>
+          </View>
+
+          {/* DATE PICKERS */}
+          {showPickerFrom && (
+            <DateTimePicker value={filters.dateFrom} mode="date" display="default" onChange={(e, d) => onDateChange(true, e, d)} maximumDate={new Date()} />
+          )}
+          {showPickerTo && (
+            <DateTimePicker value={filters.dateTo} mode="date" display="default" onChange={(e, d) => onDateChange(false, e, d)} maximumDate={new Date()} />
+          )}
 
       </SafeAreaView>
 
-      <Modal visible={showTypeModal} transparent animationType="fade">
-        <Pressable className="flex-1 bg-black/40 justify-center px-6" onPress={() => setShowTypeModal(false)}>
-          <View className="bg-white rounded-3xl p-4 shadow-xl">
-            <Text className="text-center font-bold text-lg mb-4 text-gray-800">Seleccionar Tipo</Text>
+      {/* MODAL TIPOS */}
+      <Modal visible={showTypeModal} transparent animationType="fade" onRequestClose={() => setShowTypeModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowTypeModal(false)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Tipo de Reporte</Text>
             {reportTypes.map((opt) => (
               <Pressable
                 key={opt.value}
                 onPress={() => { setFilters({...filters, type: opt.value as any, selection: ''}); setShowTypeModal(false); }}
-                className={`p-4 flex-row justify-between items-center rounded-2xl mb-2 ${filters.type === opt.value ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50'}`}
+                style={[styles.optionItem, filters.type === opt.value && styles.optionSelected]}
               >
-                <View className="flex-row items-center gap-3">
-                    <opt.icon size={20} color={filters.type === opt.value ? '#2563EB' : '#64748b'} />
-                    <Text className={`text-base ${filters.type === opt.value ? 'text-blue-700 font-bold' : 'text-gray-700'}`}>{opt.label}</Text>
+                <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
+                    <View style={[styles.iconBg, filters.type === opt.value && {backgroundColor: COLORS.primary}]}>
+                        <opt.icon size={18} color={filters.type === opt.value ? "white" : COLORS.primary} />
+                    </View>
+                    <Text style={[styles.optionText, filters.type === opt.value && {fontWeight: 'bold', color: COLORS.primary}]}>{opt.label}</Text>
                 </View>
-                {filters.type === opt.value && <Check size={18} color="#2563EB" />}
+                {filters.type === opt.value && <Check size={18} color={COLORS.primary} />}
               </Pressable>
             ))}
           </View>
         </Pressable>
       </Modal>
 
-      <Modal visible={showSelectionModal} transparent animationType="fade">
-        <Pressable className="flex-1 bg-black/40 justify-center px-6" onPress={() => setShowSelectionModal(false)}>
-          <View className="bg-white rounded-3xl p-4 shadow-xl max-h-[60%]">
-             <Text className="text-center font-bold text-lg mb-4 text-gray-800">Seleccionar Opción</Text>
-             <ScrollView showsVerticalScrollIndicator={false}>
+      {/* MODAL SELECCION */}
+      <Modal visible={showSelectionModal} transparent animationType="fade" onRequestClose={() => setShowSelectionModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowSelectionModal(false)}>
+          <View style={[styles.modalContent, { maxHeight: '60%' }]}>
+             <Text style={styles.modalTitle}>Seleccionar</Text>
+             <ScrollView>
                 {getOptions().length === 0 ? (
-                    <Text className="text-center text-gray-400 py-4">No hay opciones disponibles.</Text>
+                    <Text style={{textAlign: 'center', color: '#94a3b8', padding: 20}}>No hay datos disponibles.</Text>
                 ) : (
                     getOptions().map((opt) => (
                     <Pressable
                         key={opt.value}
                         onPress={() => { setFilters({...filters, selection: opt.value}); setShowSelectionModal(false); }}
-                        className={`p-4 flex-row justify-between items-center rounded-2xl mb-2 ${filters.selection === opt.value ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50'}`}
+                        style={[styles.optionItem, filters.selection === opt.value && styles.optionSelected]}
                     >
-                        <Text className={`text-base ${filters.selection === opt.value ? 'text-blue-700 font-bold' : 'text-gray-700'}`}>{opt.label}</Text>
-                        {filters.selection === opt.value && <Check size={18} color="#2563EB" />}
+                        <Text style={[styles.optionText, filters.selection === opt.value && {fontWeight: 'bold', color: COLORS.primary}]}>{opt.label}</Text>
+                        {filters.selection === opt.value && <Check size={18} color={COLORS.primary} />}
                     </Pressable>
                     ))
                 )}
@@ -523,3 +540,39 @@ export default function CoachReports({ navigation }: Props) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: COLORS.background },
+    header: { padding: 24, paddingBottom: 16 },
+    backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.card, justifyContent: 'center', alignItems: 'center', marginRight: 12, borderWidth: 1, borderColor: COLORS.border },
+    headerTitle: { fontSize: 22, fontWeight: '800', color: COLORS.text },
+    headerSubtitle: { fontSize: 14, color: '#64748b', marginLeft: 52 },
+    content: { paddingHorizontal: 24 },
+    
+    card: { backgroundColor: COLORS.card, borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: COLORS.border, shadowColor: "#000", shadowOpacity: 0.02, shadowRadius: 8, elevation: 1 },
+    cardTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginBottom: 16 },
+    dropdown: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 16, paddingHorizontal: 16, height: 56, borderWidth: 1, borderColor: COLORS.border },
+    dropdownText: { fontSize: 16 },
+    
+    label: { fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 6, marginLeft: 4 },
+    dateInput: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 16, paddingHorizontal: 16, height: 50, borderWidth: 1, borderColor: COLORS.border, gap: 10 },
+    dateText: { fontSize: 14, fontWeight: '600', color: COLORS.text },
+
+    infoBox: { flexDirection: 'row', backgroundColor: '#eff6ff', padding: 16, borderRadius: 16, gap: 16, alignItems: 'center', borderLeftWidth: 4, borderLeftColor: COLORS.primary },
+    infoTitle: { fontSize: 14, fontWeight: '700', color: '#1e3a8a', marginBottom: 2 },
+    infoDesc: { fontSize: 12, color: '#3b82f6', lineHeight: 18 },
+
+    footer: { padding: 24, backgroundColor: COLORS.card, borderTopWidth: 1, borderColor: COLORS.border },
+    generateButton: { flexDirection: 'row', backgroundColor: '#10B981', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center', shadowColor: '#10B981', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+    buttonDisabled: { backgroundColor: '#cbd5e1', shadowOpacity: 0 },
+    buttonPressed: { opacity: 0.9, transform: [{scale: 0.98}] },
+    buttonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
+    modalContent: { backgroundColor: 'white', borderRadius: 24, padding: 24 },
+    modalTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 20 },
+    optionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+    optionSelected: { backgroundColor: '#eff6ff', borderRadius: 12, paddingHorizontal: 10, marginHorizontal: -10, borderBottomWidth: 0 },
+    optionText: { fontSize: 16, color: COLORS.text },
+    iconBg: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#e0f2fe', justifyContent: 'center', alignItems: 'center' }
+});

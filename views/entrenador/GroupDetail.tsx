@@ -68,7 +68,7 @@ export default function GroupDetail({ navigation, route }: Props) {
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [showEditNameModal, setShowEditNameModal] = useState(false);
 
-  // --- ESTADOS DE BÚSQUEDA (NUEVO UX) ---
+  // --- ESTADOS DE BÚSQUEDA ---
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -84,21 +84,30 @@ export default function GroupDetail({ navigation, route }: Props) {
     message: string;
     type: AlertType;
     onConfirm?: () => void;
+    buttonText?: string;
+    cancelText?: string;
   }>({ visible: false, title: "", message: "", type: "info" });
 
-  const showAlert = (title: string, message: string, type: AlertType = "info", onConfirm?: () => void) => {
-    setAlertConfig({ visible: true, title, message, type, onConfirm });
+  const showAlert = (
+    title: string, 
+    message: string, 
+    type: AlertType = "info", 
+    onConfirm?: () => void,
+    buttonText: string = "Entendido",
+    cancelText: string = "Cancelar"
+  ) => {
+    setAlertConfig({ visible: true, title, message, type, onConfirm, buttonText, cancelText });
   };
 
   const closeAlert = () => setAlertConfig({ ...alertConfig, visible: false });
 
   // ----------------------------------------------------------------------
-  // 1. CARGA DE DATOS (MIEMBROS Y PRUEBAS)
+  // 1. CARGA DE DATOS
   // ----------------------------------------------------------------------
   const fetchData = useCallback(async () => {
     if (!group?.codigo) return;
 
-    // A. Cargar Miembros (Corregido: Navegando hasta Usuario)
+    // A. Cargar Miembros
     try {
       setLoadingMembers(true);
       const { data: membersData, error: membersError } = await supabase
@@ -118,7 +127,6 @@ export default function GroupDetail({ navigation, route }: Props) {
       if (membersError) throw membersError;
 
       const formattedMembers = membersData.map((item: any) => {
-        // Accedemos a la info anidada: item -> atleta -> usuario
         const userData = item.atleta?.usuario;
         return {
           id: userData?.no_documento || item.atleta_no_documento,
@@ -129,14 +137,12 @@ export default function GroupDetail({ navigation, route }: Props) {
       setMembers(formattedMembers);
     } catch (e) {
       console.error("Error members:", e);
-      Alert.alert("Error", "No se pudieron cargar los miembros");
     }
     finally { setLoadingMembers(false); }
 
-    // B. Cargar Pruebas (Corregido: Desde la tabla intermedia)
+    // B. Cargar Pruebas
     try {
       setLoadingTests(true);
-      // Consultamos la tabla intermedia donde está el 'grupo_codigo'
       const { data: testsData, error: testsError } = await supabase
         .from('prueba_asignada_has_atleta')
         .select(`
@@ -151,10 +157,7 @@ export default function GroupDetail({ navigation, route }: Props) {
 
       if (testsError) throw testsError;
 
-      // Filtramos duplicados (si una prueba está asignada a varios atletas del mismo grupo)
-      // y formateamos los datos
       const uniqueTestsMap = new Map();
-
       testsData.forEach((t: any) => {
         const pa = t.prueba_asignada;
         if (pa && !uniqueTestsMap.has(pa.id)) {
@@ -179,10 +182,8 @@ export default function GroupDetail({ navigation, route }: Props) {
   useFocusEffect(useCallback(() => { fetchData(); }, [fetchData]));
 
   // ----------------------------------------------------------------------
-  // 2. LÓGICA DE BÚSQUEDA AVANZADA (UX MEJORADO)
+  // 2. LÓGICA DE BÚSQUEDA
   // ----------------------------------------------------------------------
-
-  // Efecto Debounce para búsqueda
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       if (searchQuery.length > 2) {
@@ -191,27 +192,20 @@ export default function GroupDetail({ navigation, route }: Props) {
         setSearchResults([]);
       }
     }, 500);
-
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery]);
 
   const performSearch = async () => {
     setSearching(true);
     try {
-      // Determinamos si es búsqueda por número (documento) o texto (nombre)
       const isNumeric = /^\d+$/.test(searchQuery);
-
       let query = supabase
         .from('usuario')
         .select('no_documento, nombre_completo, rol')
-        .eq('rol', 'atleta') // Solo buscamos atletas
+        .eq('rol', 'atleta')
         .limit(10);
 
       if (isNumeric) {
-        // Búsqueda exacta o parcial por documento podría implementarse con cast, 
-        // pero Supabase a veces requiere text search. Usamos eq para exacto por ahora si es número
-        // O usamos un hack de rango o cast si se configuró en BD.
-        // Para simplicidad: Búsqueda exacta de documento O ilike en nombre
         query = query.or(`no_documento.eq.${searchQuery},nombre_completo.ilike.%${searchQuery}%`);
       } else {
         query = query.ilike('nombre_completo', `%${searchQuery}%`);
@@ -220,7 +214,6 @@ export default function GroupDetail({ navigation, route }: Props) {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Marcar los que ya están en el grupo
       const resultsWithStatus = data.map((user: any) => ({
         ...user,
         isAdded: members.some(m => m.id === user.no_documento)
@@ -236,7 +229,6 @@ export default function GroupDetail({ navigation, route }: Props) {
 
   const handleAddAthlete = async (athlete: any) => {
     try {
-      // Optimistic UI update (opcional, pero seguro mejor esperar DB)
       const { error } = await supabase
         .from('atleta_has_grupo')
         .insert({
@@ -246,21 +238,17 @@ export default function GroupDetail({ navigation, route }: Props) {
 
       if (error) throw error;
 
-      // Actualizar estado local de búsqueda
       setSearchResults(prev => prev.map(p =>
         p.no_documento === athlete.no_documento ? { ...p, isAdded: true } : p
       ));
-
-      // Refrescar lista principal
       fetchData();
-
     } catch (error: any) {
-      Alert.alert("Error", "No se pudo agregar al atleta.");
+      showAlert("Error", "No se pudo agregar al atleta.", "error");
     }
   };
 
   // ----------------------------------------------------------------------
-  // 3. ACCIONES DEL GRUPO (ELIMINAR, EDITAR)
+  // 3. ACCIONES DEL GRUPO (SOFT DELETE & EDIT)
   // ----------------------------------------------------------------------
 
   const handleUpdateGroupName = async () => {
@@ -271,21 +259,57 @@ export default function GroupDetail({ navigation, route }: Props) {
       if (error) throw error;
       setShowEditNameModal(false);
       showAlert("Éxito", "Nombre actualizado.", "success");
-    } catch (error: any) { Alert.alert("Error", error.message); }
+    } catch (error: any) { showAlert("Error", error.message, "error"); }
     finally { setLoadingAction(false); }
   };
 
+  // --- LÓGICA DE SOFT DELETE (ARCHIVAR) ---
   const handleDeleteGroup = () => {
     setShowOptionsModal(false);
-    showAlert("¿Eliminar Grupo?", "Esta acción es permanente y eliminará todas las asignaciones.", "error", async () => {
-      try {
-        setLoadingAction(true);
-        const { error } = await supabase.from('grupo').delete().eq('codigo', group.codigo);
-        if (error) throw error;
-        navigation.goBack();
-      } catch (error: any) { Alert.alert("Error", error.message); }
-      finally { setLoadingAction(false); }
-    });
+    
+    showAlert(
+      "¿Archivar Grupo?",
+      "El grupo se ocultará de tu lista, pero el historial de los atletas se conservará. ¿Deseas continuar?",
+      "warning",
+      async () => {
+        try {
+          setLoadingAction(true);
+          
+          // INTENTO 1: SOFT DELETE (Recomendado)
+          // Asumimos que ya creaste la columna 'activo' en la BD
+          const { error } = await supabase
+            .from('grupo')
+            .update({ activo: false })
+            .eq('codigo', group.codigo);
+
+          if (error) {
+             // Si falla (ej: columna no existe), intentamos HARD DELETE y capturamos el constraint
+             if (error.code === 'PGRST204' || error.message.includes('column')) {
+                 throw new Error("Columna 'activo' no configurada en DB. Contacta soporte.");
+             }
+             throw error;
+          }
+
+          navigation.goBack();
+
+        } catch (error: any) {
+          console.error(error);
+          
+          // Manejo específico del error de Foreign Key (Constraint)
+          if (error.code === '23503' || error.message?.includes('foreign key constraint')) {
+             showAlert(
+               "No se puede eliminar", 
+               "Este grupo tiene historial de pruebas vinculado. No se puede eliminar permanentemente para proteger los datos de los atletas.", 
+               "error"
+             );
+          } else {
+             showAlert("Error", error.message || "No se pudo archivar el grupo.", "error");
+          }
+        }
+        finally { setLoadingAction(false); }
+      },
+      "Sí, Archivar"
+    );
   };
 
   const handleRemoveSelectedMembers = () => {
@@ -304,9 +328,9 @@ export default function GroupDetail({ navigation, route }: Props) {
         setSelectedMembers([]);
         fetchData();
         showAlert("Listo", "Atletas removidos.", "success");
-      } catch (e: any) { Alert.alert("Error", e.message); }
+      } catch (e: any) { showAlert("Error", e.message, "error"); }
       finally { setLoadingAction(false); }
-    });
+    }, "Eliminar");
   };
 
   const toggleMemberSelection = (id: number) => {
@@ -317,20 +341,27 @@ export default function GroupDetail({ navigation, route }: Props) {
     }
   };
 
-  // ----------------------------------------------------------------------
-  // RENDER
-  // ----------------------------------------------------------------------
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      {/* Loading Overlay Global */}
       {loadingAction && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       )}
+
+      {/* --- CUSTOM ALERT --- */}
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onClose={closeAlert}
+        onConfirm={alertConfig.onConfirm}
+        buttonText={alertConfig.buttonText}
+        cancelText={alertConfig.cancelText}
+      />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
 
@@ -494,7 +525,7 @@ export default function GroupDetail({ navigation, route }: Props) {
         </ScrollView>
       </SafeAreaView>
 
-      {/* --- MODAL 1: BÚSQUEDA DE ATLETAS (MEJORADO) --- */}
+      {/* --- MODAL 1: BÚSQUEDA --- */}
       <Modal visible={showAddMemberModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAddMemberModal(false)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cardBg }}>
           <View style={styles.modalHeader}>
@@ -578,7 +609,7 @@ export default function GroupDetail({ navigation, route }: Props) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* --- MODAL 3: OPCIONES --- */}
+      {/* --- MODAL 3: OPCIONES (Archivar en vez de eliminar) --- */}
       <Modal visible={showOptionsModal} transparent animationType="fade" onRequestClose={() => setShowOptionsModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowOptionsModal(false)}>
           <View style={styles.actionSheet}>
@@ -590,22 +621,15 @@ export default function GroupDetail({ navigation, route }: Props) {
               <Text style={styles.sheetOptionText}>Editar Nombre</Text>
             </Pressable>
 
+            {/* OPCIÓN CAMBIADA VISUALMENTE A ARCHIVAR/ELIMINAR */}
             <Pressable onPress={handleDeleteGroup} style={[styles.sheetOption, { borderBottomWidth: 0 }]}>
-              <Ionicons name="trash-outline" size={22} color={COLORS.danger} />
-              <Text style={[styles.sheetOptionText, { color: COLORS.danger }]}>Eliminar Grupo</Text>
+              <Ionicons name="archive-outline" size={22} color={COLORS.danger} />
+              <Text style={[styles.sheetOptionText, { color: COLORS.danger }]}>Archivar Grupo</Text>
             </Pressable>
           </View>
         </Pressable>
       </Modal>
 
-      <CustomAlert
-        visible={alertConfig.visible}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        type={alertConfig.type}
-        onClose={closeAlert}
-        onConfirm={alertConfig.onConfirm}
-      />
     </View>
   );
 }

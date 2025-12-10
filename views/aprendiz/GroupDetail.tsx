@@ -17,12 +17,14 @@ import {
     Calendar,
     User,
     Target,
+    LogOut,
     ClipboardList
 } from "lucide-react-native";
 
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
 import { AprendizStackParamList } from "../../navigation/types";
+import CustomAlert, { AlertType } from "../../components/CustomAlert";
 
 type Props = NativeStackScreenProps<AprendizStackParamList, "GroupDetail">;
 
@@ -36,6 +38,8 @@ const COLORS = {
     textMuted: "#64748b",
     borderColor: "#e2e8f0",
     shadow: "#000000",
+    danger: "#ef4444",
+    dangerBg: "#fef2f2",
 };
 
 export default function GroupDetail({ navigation, route }: Props) {
@@ -43,84 +47,131 @@ export default function GroupDetail({ navigation, route }: Props) {
     const { user } = useAuth();
 
     const [loading, setLoading] = useState(true);
+    const [leaving, setLeaving] = useState(false);
+    
+    // Datos
     const [groupInfo, setGroupInfo] = useState<any>(null);
     const [memberCount, setMemberCount] = useState(0);
     const [groupHistory, setGroupHistory] = useState<any[]>([]);
+    const [userRole, setUserRole] = useState<'atleta' | 'entrenador' | null>(null);
+    const [userDoc, setUserDoc] = useState<number | null>(null);
+
+    // Configuración de Alerta Personalizada
+    const [alertConfig, setAlertConfig] = useState({
+        visible: false,
+        title: "",
+        message: "",
+        type: "info" as AlertType,
+        buttonText: "Entendido",
+        onConfirm: undefined as (() => void) | undefined,
+        cancelText: undefined as string | undefined
+    });
 
     useEffect(() => {
         fetchGroupDetails();
     }, []);
 
+    // Helper para mostrar alertas simples
+    const showAlert = (title: string, message: string, type: AlertType = "info") => {
+        setAlertConfig({
+            visible: true,
+            title,
+            message,
+            type,
+            buttonText: "Entendido",
+            onConfirm: undefined,
+            cancelText: undefined
+        });
+    };
+
+    const closeAlert = () => {
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+    };
+
+    // --- HELPER: FORMATEO DE UNIDADES ---
+    const formatUnit = (raw: string | null) => {
+        if (!raw) return '';
+        const r = raw.toLowerCase();
+        
+        if (r === 'time_min' || r.includes('minutos') || r.includes('minute')) return 'Min';
+        if (r === 'time_sec' || r.includes('segundos') || r.includes('second')) return 'Seg';
+        if (r.includes('rep')) return 'Reps';
+        if (r.includes('kilo') || r.includes('kg')) return 'Kg';
+        if (r.includes('metr')) return 'm';
+        
+        return raw; 
+    };
+
     const fetchGroupDetails = async () => {
         try {
             if (!user) return;
 
-            // 1. Obtener Info del Grupo y Nombre del Entrenador
+            // 1. Obtener Rol y Documento del Usuario Actual
+            const { data: userData } = await supabase
+                .from('usuario')
+                .select('no_documento, rol')
+                .eq('auth_id', user.id)
+                .single();
+
+            if (userData) {
+                setUserRole(userData.rol as 'atleta' | 'entrenador');
+                setUserDoc(userData.no_documento);
+            }
+
+            // 2. Info del Grupo
             const { data: groupData, error: groupError } = await supabase
                 .from('grupo')
                 .select(`
-          codigo,
-          nombre,
-          descripcion,
-          fecha_creacion,
-          entrenador (
-            usuario ( nombre_completo )
-          )
-        `)
+                  codigo,
+                  nombre,
+                  descripcion,
+                  fecha_creacion,
+                  entrenador (
+                    usuario ( nombre_completo )
+                  )
+                `)
                 .eq('codigo', grupoCodigo)
                 .single();
 
             if (groupError) throw groupError;
             setGroupInfo(groupData);
 
-            // 2. Contar Miembros
-            const { count, error: countError } = await supabase
+            // 3. Contar Miembros
+            const { count } = await supabase
                 .from('atleta_has_grupo')
                 .select('*', { count: 'exact', head: true })
                 .eq('grupo_codigo', grupoCodigo);
 
-            if (!countError) setMemberCount(count || 0);
+            setMemberCount(count || 0);
 
-            // 3. Obtener Historial de Resultados EXCLUSIVO de este grupo
-            // Esto requiere cruzar resultado -> prueba_asignada -> prueba_asignada_has_atleta -> grupo
-            // Ojo: Dependiendo de tu DB exacta, ajustamos. Asumiendo la relación a través de asignación:
-
-            const { data: userData } = await supabase
-                .from('usuario')
-                .select('no_documento')
-                .eq('auth_id', user.id)
-                .single();
-
+            // 4. Historial del Usuario en este Grupo
             if (userData) {
-                // Traemos resultados donde la asignación pertenezca a este grupo
-                // Nota: Es una query compleja. Simplificamos trayendo asignaciones de este grupo y sus resultados.
                 const { data: historyData, error: historyError } = await supabase
                     .from('resultado_prueba')
                     .select(`
-                id,
-                valor,
-                fecha_realizacion,
-                prueba_asignada!inner (
-                    id,
-                    prueba ( nombre, tipo_metrica ),
-                    prueba_asignada_has_atleta!inner (
-                        grupo_codigo
-                    )
-                )
-            `)
+                        id,
+                        valor,
+                        fecha_realizacion,
+                        prueba_asignada!inner (
+                            id,
+                            prueba ( nombre, tipo_metrica ),
+                            prueba_asignada_has_atleta!inner (
+                                grupo_codigo
+                            )
+                        )
+                    `)
                     .eq('atleta_no_documento', userData.no_documento)
                     .eq('prueba_asignada.prueba_asignada_has_atleta.grupo_codigo', grupoCodigo)
                     .order('fecha_realizacion', { ascending: false })
                     .limit(10);
 
-                if (!historyError) {
-                    // Limpiamos la estructura
+                if (!historyError && historyData) {
                     const formattedHistory = historyData.map((item: any) => ({
                         id: item.id,
                         valor: item.valor,
                         fecha: item.fecha_realizacion,
                         prueba: item.prueba_asignada.prueba.nombre,
-                        unidad: item.prueba_asignada.prueba.tipo_metrica
+                        unidad: formatUnit(item.prueba_asignada.prueba.tipo_metrica)
                     }));
                     setGroupHistory(formattedHistory);
                 }
@@ -130,6 +181,40 @@ export default function GroupDetail({ navigation, route }: Props) {
             console.error("Error cargando detalle grupo:", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // --- LÓGICA SALIR DEL GRUPO CON CUSTOM ALERT ---
+    const handleLeaveGroup = () => {
+        setAlertConfig({
+            visible: true,
+            title: "Salir del Equipo",
+            message: `¿Estás seguro que deseas salir de "${groupInfo?.nombre}"? Esta acción no se puede deshacer.`,
+            type: "warning",
+            buttonText: "Sí, Salir",
+            cancelText: "Cancelar",
+            onConfirm: confirmLeave
+        });
+    };
+
+    const confirmLeave = async () => {
+        if (!userDoc) return;
+        setLeaving(true);
+        try {
+            const { error } = await supabase
+                .from('atleta_has_grupo')
+                .delete()
+                .eq('atleta_no_documento', userDoc)
+                .eq('grupo_codigo', grupoCodigo);
+
+            if (error) throw error;
+
+            navigation.goBack();
+        } catch (error) {
+            console.error("Error al salir del grupo:", error);
+            showAlert("Error", "No se pudo salir del grupo. Intenta nuevamente.", "error");
+        } finally {
+            setLeaving(false);
         }
     };
 
@@ -143,7 +228,20 @@ export default function GroupDetail({ navigation, route }: Props) {
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="transparent" />
+            <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+            
+            {/* INTEGRACIÓN CUSTOM ALERT */}
+            <CustomAlert 
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                type={alertConfig.type}
+                onClose={closeAlert}
+                buttonText={alertConfig.buttonText}
+                onConfirm={alertConfig.onConfirm}
+                cancelText={alertConfig.cancelText}
+            />
+
             <SafeAreaView style={{ flex: 1 }} edges={['top']}>
 
                 {/* HEADER */}
@@ -152,12 +250,12 @@ export default function GroupDetail({ navigation, route }: Props) {
                         <ArrowLeft size={24} color={COLORS.textDark} />
                     </Pressable>
                     <Text style={styles.headerTitle} numberOfLines={1}>{nombreGrupo}</Text>
-                    <View style={{ width: 40 }} />
+                    <View style={{ width: 48 }} />
                 </View>
 
                 <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-                    {/* HERO CARD (Información del Grupo) */}
+                    {/* HERO CARD */}
                     <View style={styles.heroCard}>
                         <View style={styles.iconCircle}>
                             <Users size={32} color={COLORS.primary} />
@@ -169,7 +267,7 @@ export default function GroupDetail({ navigation, route }: Props) {
                             <View style={styles.statItem}>
                                 <User size={16} color={COLORS.textMuted} style={{ marginBottom: 4 }} />
                                 <Text style={styles.statLabel}>Entrenador</Text>
-                                <Text style={styles.statValue}>{groupInfo?.entrenador?.usuario?.nombre_completo || "Desconocido"}</Text>
+                                <Text style={styles.statValue}>{groupInfo?.entrenador?.usuario?.nombre_completo?.split(" ")[0] || "Coach"}</Text>
                             </View>
                             <View style={styles.dividerVertical} />
                             <View style={styles.statItem}>
@@ -184,6 +282,24 @@ export default function GroupDetail({ navigation, route }: Props) {
                                 <Text style={styles.statValue}>{new Date(groupInfo?.fecha_creacion).toLocaleDateString()}</Text>
                             </View>
                         </View>
+
+                        {/* BOTÓN SALIR (Solo si es atleta) */}
+                        {userRole === 'atleta' && (
+                            <Pressable 
+                                onPress={handleLeaveGroup} 
+                                style={styles.leaveButton}
+                                disabled={leaving}
+                            >
+                                {leaving ? (
+                                    <ActivityIndicator size="small" color={COLORS.danger} />
+                                ) : (
+                                    <>
+                                        <LogOut size={16} color={COLORS.danger} style={{marginRight: 6}} />
+                                        <Text style={styles.leaveText}>Salir del Equipo</Text>
+                                    </>
+                                )}
+                            </Pressable>
+                        )}
                     </View>
 
                     {/* SECCIÓN HISTORIAL */}
@@ -269,7 +385,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
         paddingBottom: 40,
     },
-    // Hero Card
+    
+    // HERO CARD
     heroCard: {
         backgroundColor: COLORS.white,
         borderRadius: 24,
@@ -317,6 +434,7 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.background,
         padding: 16,
         borderRadius: 16,
+        marginBottom: 20,
     },
     statItem: {
         flex: 1,
@@ -340,7 +458,26 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.borderColor,
         height: '100%',
     },
-    // History Section
+    // BOTÓN SALIR
+    leaveButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 14,
+        backgroundColor: COLORS.dangerBg,
+        borderWidth: 1,
+        borderColor: '#fecaca',
+        width: '100%',
+    },
+    leaveText: {
+        color: COLORS.danger,
+        fontWeight: '700',
+        fontSize: 14,
+    },
+
+    // HISTORIAL
     sectionContainer: {
         marginBottom: 24,
     },

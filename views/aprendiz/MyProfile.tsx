@@ -31,7 +31,6 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { AprendizStackParamList } from "../../navigation/types";
 
-// Integración Supabase y Contexto
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
 import CustomAlert, { AlertType } from "../../components/CustomAlert";
@@ -43,18 +42,17 @@ interface GenderOption {
   nombre: string;
 }
 
-// --- CONSTANTES DE COLOR ---
 const COLORS = {
-  primary: "#2563eb",     // blue-600
-  primaryLight: "#eff6ff", // blue-50 (fondos suaves)
-  primaryBorder: "#dbeafe", // blue-100
-  background: "#f8fafc",  // slate-50
+  primary: "#2563eb",
+  primaryLight: "#eff6ff",
+  primaryBorder: "#dbeafe",
+  background: "#f8fafc",
   white: "#ffffff",
-  textDark: "#0f172a",    // slate-900
-  textLabel: "#334155",   // slate-700
-  textMuted: "#64748b",   // slate-500
-  textLight: "#94a3b8",   // slate-400
-  borderColor: "#e2e8f0", // slate-200
+  textDark: "#0f172a",
+  textLabel: "#334155",
+  textMuted: "#64748b",
+  textLight: "#94a3b8",
+  borderColor: "#e2e8f0",
   inputBg: "#ffffff",
   inputDisabledBg: "#f8fafc",
   shadow: "#000000",
@@ -64,11 +62,10 @@ export default function MyProfile({ navigation }: Props) {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
 
-  // Estados de carga
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isCoach, setIsCoach] = useState(false);
 
-  // Estados del Formulario
   const [formData, setFormData] = useState({
     name: '',
     documentNumber: '',
@@ -78,15 +75,11 @@ export default function MyProfile({ navigation }: Props) {
     genderName: ''
   });
 
-  // Estados Fecha
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-
-  // Estados Género
   const [genderOptions, setGenderOptions] = useState<GenderOption[]>([]);
   const [showGenderModal, setShowGenderModal] = useState(false);
 
-  // Estado Alerta Personalizada
   const [alertConfig, setAlertConfig] = useState({
     visible: false,
     title: "",
@@ -106,7 +99,6 @@ export default function MyProfile({ navigation }: Props) {
     }
   };
 
-  // --- HELPER FECHAS ---
   const parseLocalDate = (dateString: string) => {
     if (!dateString) return null;
     const [year, month, day] = dateString.split('-').map(Number);
@@ -124,7 +116,6 @@ export default function MyProfile({ navigation }: Props) {
     if (selectedDate) setBirthDate(selectedDate);
   };
 
-  // 1. CARGAR DATOS INICIALES
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
@@ -132,40 +123,46 @@ export default function MyProfile({ navigation }: Props) {
       try {
         setLoading(true);
 
-        // A. Cargar catálogo de géneros
         const { data: gendersData } = await supabase.from('genero').select('*');
         if (gendersData) setGenderOptions(gendersData);
 
-        // B. Cargar datos del usuario
         const { data: userData, error: userError } = await supabase
           .from('usuario')
-          .select('no_documento, nombre_completo')
+          .select('no_documento, nombre_completo, rol')
           .eq('auth_id', user.id)
           .single();
 
         if (userError) throw userError;
 
-        // C. Cargar datos del atleta
-        const { data: athleteData } = await supabase
-          .from('atleta')
-          .select('estatura, peso, fecha_nacimiento, genero_id')
-          .eq('no_documento', userData.no_documento)
-          .single();
+        const userIsCoach = userData.rol === 'entrenador';
+        setIsCoach(userIsCoach);
 
-        // Encontrar el nombre del género si existe
-        const currentGender = gendersData?.find(g => g.id === athleteData?.genero_id);
-
-        setFormData({
+        setFormData(prev => ({
+          ...prev,
           name: userData.nombre_completo || '',
           documentNumber: userData.no_documento.toString(),
-          height: athleteData?.estatura ? athleteData.estatura.toString() : '',
-          weight: athleteData?.peso ? athleteData.peso.toString() : '',
-          genderId: athleteData?.genero_id || null,
-          genderName: currentGender ? currentGender.nombre : ''
-        });
+        }));
 
-        if (athleteData?.fecha_nacimiento) {
-          setBirthDate(parseLocalDate(athleteData.fecha_nacimiento));
+        if (!userIsCoach) {
+          const { data: athleteData } = await supabase
+            .from('atleta')
+            .select('estatura, peso, fecha_nacimiento, genero_id')
+            .eq('no_documento', userData.no_documento)
+            .single();
+
+          const currentGender = gendersData?.find(g => g.id === athleteData?.genero_id);
+
+          setFormData(prev => ({
+            ...prev,
+            height: athleteData?.estatura ? athleteData.estatura.toString() : '',
+            weight: athleteData?.peso ? athleteData.peso.toString() : '',
+            genderId: athleteData?.genero_id || null,
+            genderName: currentGender ? currentGender.nombre : ''
+          }));
+
+          if (athleteData?.fecha_nacimiento) {
+            setBirthDate(parseLocalDate(athleteData.fecha_nacimiento));
+          }
         }
 
       } catch (error) {
@@ -178,14 +175,19 @@ export default function MyProfile({ navigation }: Props) {
     loadData();
   }, [user]);
 
-  // 2. GUARDAR CAMBIOS
+  // --- LOGICA DE GUARDADO MEJORADA CON HISTORIAL ---
   const handleSave = async () => {
     if (!formData.documentNumber) return;
+
+    if (isCoach) {
+      showAlert("Información", "Tus datos son gestionados por administración.", "info");
+      return;
+    }
 
     setSaving(true);
     try {
       const heightVal = parseFloat(formData.height);
-      const weightVal = parseInt(formData.weight);
+      const weightVal = parseFloat(formData.weight); // Use float for precision if needed
 
       if (formData.height && isNaN(heightVal)) {
         showAlert("Dato inválido", "La altura debe ser un número válido.", "warning");
@@ -193,7 +195,6 @@ export default function MyProfile({ navigation }: Props) {
         return;
       }
 
-      // Objeto de actualización
       const updates: any = {
         estatura: heightVal || null,
         peso: weightVal || null,
@@ -204,16 +205,37 @@ export default function MyProfile({ navigation }: Props) {
         updates.fecha_nacimiento = getLocalISOString(birthDate);
       }
 
-      const { error } = await supabase
+      const docId = parseInt(formData.documentNumber);
+
+      // 1. Actualizar tabla 'atleta'
+      const { error: updateError } = await supabase
         .from('atleta')
         .update(updates)
-        .eq('no_documento', parseInt(formData.documentNumber));
+        .eq('no_documento', docId);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
+
+      // 2. Insertar en 'historial_fisico' (NUEVO)
+      // Guardamos la foto del estado físico actual para reportes futuros
+      const { error: historyError } = await supabase
+        .from('historial_fisico')
+        .insert({
+          atleta_no_documento: docId,
+          peso: weightVal || null,
+          estatura: heightVal || null,
+          // Calculamos IMC si hay datos
+          imc: (weightVal && heightVal) ? (weightVal / ((heightVal/100) * (heightVal/100))).toFixed(2) : null,
+          fecha_registro: new Date().toISOString()
+        });
+
+      if (historyError) {
+        console.error("Advertencia: No se guardó el historial", historyError);
+        // No lanzamos error para no bloquear al usuario, pero lo logueamos
+      }
 
       showAlert(
         "Perfil Actualizado",
-        "Tus datos han sido guardados correctamente.",
+        "Tus datos han sido guardados y tu progreso registrado.",
         "success",
         () => navigation.goBack()
       );
@@ -238,7 +260,6 @@ export default function MyProfile({ navigation }: Props) {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      {/* Alerta Personalizada */}
       <CustomAlert
         visible={alertConfig.visible}
         title={alertConfig.title}
@@ -257,7 +278,6 @@ export default function MyProfile({ navigation }: Props) {
             showsVerticalScrollIndicator={false}
           >
 
-            {/* HEADER NAV */}
             <View style={styles.headerContainer}>
               <Pressable
                 onPress={() => navigation.goBack()}
@@ -270,7 +290,6 @@ export default function MyProfile({ navigation }: Props) {
               </Pressable>
             </View>
 
-            {/* HERO SECTION */}
             <View style={styles.heroSection}>
               <View style={styles.heroImageContainer}>
                 <User size={56} color={COLORS.primary} />
@@ -279,13 +298,13 @@ export default function MyProfile({ navigation }: Props) {
                 </View>
               </View>
               <Text style={styles.heroTitle}>Mi Perfil</Text>
-              <Text style={styles.heroSubtitle}>Actualiza tu información personal</Text>
+              <Text style={styles.heroSubtitle}>
+                {isCoach ? "Información de Entrenador" : "Actualiza tu información personal"}
+              </Text>
             </View>
 
-            {/* CONTENEDOR PRINCIPAL */}
             <View style={styles.mainContainer}>
 
-              {/* CARD IDENTIDAD */}
               <View style={styles.card}>
                 <View style={styles.cardHeader}>
                   <View style={styles.cardTitleRow}>
@@ -324,142 +343,141 @@ export default function MyProfile({ navigation }: Props) {
                 </View>
               </View>
 
-              {/* CARD DATOS FÍSICOS */}
-              <View style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.cardTitle}>Datos Físicos</Text>
-                  <Text style={styles.cardSubtitle}>Información necesaria para tus métricas</Text>
-                </View>
-
-                <View style={styles.cardContent}>
-                  {/* SELECTOR DE GÉNERO */}
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Género</Text>
-                    <Pressable
-                      onPress={() => setShowGenderModal(true)}
-                      style={({ pressed }) => [
-                        styles.selectButton,
-                        pressed && styles.selectButtonPressed
-                      ]}
-                    >
-                      <View style={styles.selectContent}>
-                        <User size={20} color={COLORS.textLight} style={styles.inputIcon} />
-                        <Text style={[
-                          styles.selectText,
-                          formData.genderId ? styles.textDark : styles.textLight
-                        ]}>
-                          {formData.genderName || "Seleccionar género"}
-                        </Text>
-                      </View>
-                      <ChevronDown size={20} color={COLORS.textMuted} />
-                    </Pressable>
-                  </View>
-
-                  {/* FILA DE ALTURA Y PESO */}
-                  <View style={styles.row}>
-                    <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                      <Text style={styles.label}>Altura</Text>
-                      <View style={styles.inputWrapperRow}>
-                        <Ruler size={20} color={COLORS.textLight} style={styles.inputIcon} />
-                        <TextInput
-                          value={formData.height}
-                          onChangeText={(text) => setFormData({ ...formData, height: text })}
-                          keyboardType="numeric"
-                          placeholder="0"
-                          style={styles.inputNumber}
-                        />
-                        <View style={styles.unitBadge}>
-                          <Text style={styles.unitText}>CM</Text>
-                        </View>
-                      </View>
+              {!isCoach && (
+                <>
+                  <View style={styles.card}>
+                    <View style={styles.cardHeader}>
+                      <Text style={styles.cardTitle}>Datos Físicos</Text>
+                      <Text style={styles.cardSubtitle}>Información necesaria para tus métricas</Text>
                     </View>
 
-                    <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-                      <Text style={styles.label}>Peso</Text>
-                      <View style={styles.inputWrapperRow}>
-                        <Weight size={20} color={COLORS.textLight} style={styles.inputIcon} />
-                        <TextInput
-                          value={formData.weight}
-                          onChangeText={(text) => setFormData({ ...formData, weight: text })}
-                          keyboardType="numeric"
-                          placeholder="0"
-                          style={styles.inputNumber}
-                        />
-                        <View style={styles.unitBadge}>
-                          <Text style={styles.unitText}>KG</Text>
+                    <View style={styles.cardContent}>
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Género</Text>
+                        <Pressable
+                          onPress={() => setShowGenderModal(true)}
+                          style={({ pressed }) => [
+                            styles.selectButton,
+                            pressed && styles.selectButtonPressed
+                          ]}
+                        >
+                          <View style={styles.selectContent}>
+                            <User size={20} color={COLORS.textLight} style={styles.inputIcon} />
+                            <Text style={[
+                              styles.selectText,
+                              formData.genderId ? styles.textDark : styles.textLight
+                            ]}>
+                              {formData.genderName || "Seleccionar género"}
+                            </Text>
+                          </View>
+                          <ChevronDown size={20} color={COLORS.textMuted} />
+                        </Pressable>
+                      </View>
+
+                      <View style={styles.row}>
+                        <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                          <Text style={styles.label}>Altura</Text>
+                          <View style={styles.inputWrapperRow}>
+                            <Ruler size={20} color={COLORS.textLight} style={styles.inputIcon} />
+                            <TextInput
+                              value={formData.height}
+                              onChangeText={(text) => setFormData({ ...formData, height: text })}
+                              keyboardType="numeric"
+                              placeholder="0"
+                              style={styles.inputNumber}
+                            />
+                            <View style={styles.unitBadge}>
+                              <Text style={styles.unitText}>CM</Text>
+                            </View>
+                          </View>
                         </View>
+
+                        <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+                          <Text style={styles.label}>Peso</Text>
+                          <View style={styles.inputWrapperRow}>
+                            <Weight size={20} color={COLORS.textLight} style={styles.inputIcon} />
+                            <TextInput
+                              value={formData.weight}
+                              onChangeText={(text) => setFormData({ ...formData, weight: text })}
+                              keyboardType="numeric"
+                              placeholder="0"
+                              style={styles.inputNumber}
+                            />
+                            <View style={styles.unitBadge}>
+                              <Text style={styles.unitText}>KG</Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Fecha de Nacimiento</Text>
+                        <Pressable
+                          onPress={() => setShowDatePicker(true)}
+                          style={({ pressed }) => [
+                            styles.selectButton,
+                            pressed && styles.selectButtonPressed
+                          ]}
+                        >
+                          <Calendar size={20} color={COLORS.textLight} style={styles.inputIcon} />
+                          {birthDate ? (
+                            <Text style={[styles.selectText, styles.textDark]}>
+                              {birthDate.toLocaleDateString()}
+                            </Text>
+                          ) : (
+                            <Text style={[styles.selectText, styles.textLight]}>
+                              Seleccionar fecha...
+                            </Text>
+                          )}
+                        </Pressable>
+                        {showDatePicker && (
+                          <DateTimePicker
+                            value={birthDate || new Date(2000, 0, 1)}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={onDateChange}
+                            maximumDate={new Date()}
+                          />
+                        )}
                       </View>
                     </View>
                   </View>
 
-                  {/* FECHA NACIMIENTO */}
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Fecha de Nacimiento</Text>
-                    <Pressable
-                      onPress={() => setShowDatePicker(true)}
-                      style={({ pressed }) => [
-                        styles.selectButton,
-                        pressed && styles.selectButtonPressed
-                      ]}
-                    >
-                      <Calendar size={20} color={COLORS.textLight} style={styles.inputIcon} />
-                      {birthDate ? (
-                        <Text style={[styles.selectText, styles.textDark]}>
-                          {birthDate.toLocaleDateString()}
-                        </Text>
-                      ) : (
-                        <Text style={[styles.selectText, styles.textLight]}>
-                          Seleccionar fecha...
-                        </Text>
-                      )}
-                    </Pressable>
-                    {showDatePicker && (
-                      <DateTimePicker
-                        value={birthDate || new Date(2000, 0, 1)}
-                        mode="date"
-                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={onDateChange}
-                        maximumDate={new Date()}
-                      />
-                    )}
+                  <View style={styles.infoBanner}>
+                    <Info size={22} color={COLORS.primary} style={{ marginTop: 2 }} />
+                    <Text style={styles.infoText}>
+                      Mantener tus datos actualizados nos ayuda a calcular tu IMC y personalizar tus cargas de entrenamiento.
+                    </Text>
                   </View>
-                </View>
-              </View>
-
-              {/* BANNER INFO */}
-              <View style={styles.infoBanner}>
-                <Info size={22} color={COLORS.primary} style={{ marginTop: 2 }} />
-                <Text style={styles.infoText}>
-                  Mantener tus datos actualizados nos ayuda a calcular tu IMC y personalizar tus cargas de entrenamiento.
-                </Text>
-              </View>
+                </>
+              )}
 
             </View>
           </ScrollView>
 
-          {/* BOTÓN GUARDAR */}
-          <View style={[styles.footerContainer, { paddingBottom: Math.max(insets.bottom, 24) }]}>
-            <Pressable
-              onPress={handleSave}
-              disabled={saving}
-              style={({ pressed }) => [
-                styles.saveButton,
-                saving && styles.saveButtonDisabled,
-                pressed && !saving && styles.saveButtonPressed
-              ]}
-            >
-              {saving ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <>
-                  <Save size={20} color="white" style={{ marginRight: 8 }} />
-                  <Text style={styles.saveButtonText}>Guardar Cambios</Text>
-                </>
-              )}
-            </Pressable>
-          </View>
+          {!isCoach && (
+            <View style={[styles.footerContainer, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+              <Pressable
+                onPress={handleSave}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.saveButton,
+                  saving && styles.saveButtonDisabled,
+                  pressed && !saving && styles.saveButtonPressed
+                ]}
+              >
+                {saving ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <>
+                    <Save size={20} color="white" style={{ marginRight: 8 }} />
+                    <Text style={styles.saveButtonText}>Guardar Cambios</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          )}
 
-          {/* --- MODAL SELECTOR DE GÉNERO --- */}
           <Modal
             visible={showGenderModal}
             transparent={true}
@@ -522,7 +540,6 @@ export default function MyProfile({ navigation }: Props) {
   );
 }
 
-// --- ESTILOS ESTRICTOS ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -540,7 +557,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 150,
   },
-  // Header
   headerContainer: {
     paddingHorizontal: 24,
     paddingTop: 16,
@@ -564,7 +580,6 @@ const styles = StyleSheet.create({
   backButtonPressed: {
     backgroundColor: COLORS.background,
   },
-  // Hero
   heroSection: {
     alignItems: 'center',
     marginTop: 16,
@@ -609,12 +624,10 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     marginTop: 4,
   },
-  // Main Container
   mainContainer: {
     paddingHorizontal: 24,
-    gap: 32, // Espacio entre tarjetas
+    gap: 32,
   },
-  // Cards
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 32,
@@ -672,7 +685,6 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     textTransform: 'uppercase',
   },
-  // Inputs
   cardContent: {
     gap: 20,
   },
@@ -699,7 +711,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: COLORS.textMuted,
   },
-  // Select Button
   selectButton: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -710,7 +721,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    // Sombra suave
     shadowColor: COLORS.borderColor,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -740,7 +750,6 @@ const styles = StyleSheet.create({
   textMuted: {
     color: COLORS.textMuted,
   },
-  // Row Inputs (Height/Weight)
   row: {
     flexDirection: 'row',
   },
@@ -749,7 +758,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.borderColor,
     borderRadius: 16,
-    height: 64, // Más alto para los números
+    height: 64,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
@@ -776,9 +785,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.textLight,
   },
-  // Info Banner
   infoBanner: {
-    backgroundColor: 'rgba(37, 99, 235, 0.08)', // primary con baja opacidad
+    backgroundColor: 'rgba(37, 99, 235, 0.08)',
     borderWidth: 1,
     borderColor: COLORS.primaryBorder,
     borderRadius: 16,
@@ -793,9 +801,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 20,
     fontWeight: '500',
-    color: '#1e3a8a', // Azul oscuro
+    color: '#1e3a8a',
   },
-  // Footer Button
   footerContainer: {
     position: 'absolute',
     bottom: 0,
@@ -826,7 +833,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   saveButtonDisabled: {
-    backgroundColor: '#60a5fa', // blue-400
+    backgroundColor: '#60a5fa',
     shadowOpacity: 0,
   },
   saveButtonPressed: {
@@ -839,7 +846,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     letterSpacing: 0.5,
   },
-  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -894,7 +900,7 @@ const styles = StyleSheet.create({
   },
   genderOptionSelected: {
     backgroundColor: COLORS.primaryLight,
-    borderColor: '#bfdbfe', // blue-200
+    borderColor: '#bfdbfe',
   },
   genderText: {
     fontSize: 16,
@@ -904,10 +910,10 @@ const styles = StyleSheet.create({
     color: COLORS.textLabel,
   },
   genderTextSelected: {
-    color: '#1d4ed8', // blue-700
+    color: '#1d4ed8',
   },
   checkContainer: {
-    backgroundColor: '#dbeafe', // blue-100
+    backgroundColor: '#dbeafe',
     padding: 4,
     borderRadius: 12,
   },

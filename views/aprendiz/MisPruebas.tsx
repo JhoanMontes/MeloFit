@@ -66,6 +66,20 @@ export default function MisPruebas({ navigation }: Props) {
     fetchHistory();
   }, [user]);
 
+  // --- HELPER: FORMATEO DE UNIDADES ---
+  const formatUnit = (raw: string | null) => {
+    if (!raw) return '';
+    const r = raw.toLowerCase();
+    
+    if (r === 'time_min' || r.includes('minutos') || r.includes('minute')) return 'Min';
+    if (r === 'time_sec' || r.includes('segundos') || r.includes('second')) return 'Seg';
+    if (r.includes('rep')) return 'Reps';
+    if (r.includes('kilo') || r.includes('kg')) return 'Kg';
+    if (r.includes('metr')) return 'm';
+    
+    return raw; 
+  };
+
   // 1. Cargar Historial
   const fetchHistory = async () => {
     if (!user) return;
@@ -146,8 +160,9 @@ export default function MisPruebas({ navigation }: Props) {
           
           <View style={styles.badgeContainer}>
             <Text style={styles.badgeValue}>{item.valor}</Text>
+            {/* UNIDAD FORMATEADA */}
             <Text style={styles.badgeUnit}>
-              {item.prueba_asignada?.prueba?.tipo_metrica}
+              {formatUnit(item.prueba_asignada?.prueba?.tipo_metrica)}
             </Text>
           </View>
         </View>
@@ -211,7 +226,8 @@ export default function MisPruebas({ navigation }: Props) {
                    <Text style={styles.bigResultLabel}>Tu Marca</Text>
                    <Text style={styles.bigResultValue}>
                      {selectedResult.valor} 
-                     <Text style={styles.bigResultUnit}> {selectedResult.prueba_asignada?.prueba?.tipo_metrica}</Text>
+                     {/* UNIDAD FORMATEADA */}
+                     <Text style={styles.bigResultUnit}> {formatUnit(selectedResult.prueba_asignada?.prueba?.tipo_metrica)}</Text>
                    </Text>
                 </View>
 

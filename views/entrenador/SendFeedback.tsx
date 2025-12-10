@@ -17,8 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { EntrenadorStackParamList } from "../../navigation/types";
 import { supabase } from "../../lib/supabase";
 
-// Importamos el componente CustomAlert
-import CustomAlert, { AlertType } from "../../components/CustomAlert"; // Asegúrate que la ruta sea correcta
+import CustomAlert, { AlertType } from "../../components/CustomAlert";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "SendFeedback">;
 
@@ -36,7 +35,7 @@ const COLORS = {
 
 interface TestRange {
     id?: number; 
-    nombre: string;
+    nombre: string; // Unificado
     min: number;
     max: number;
     color: string; 
@@ -45,7 +44,6 @@ interface TestRange {
 export default function SendFeedback({ navigation, route }: Props) {
     const { result } = route.params || {};
 
-    // Datos recibidos de la navegación
     const athleteId = result?.athleteId;
     const athleteName = result?.athleteName || "Atleta"; 
     const assignmentId = result?.assignmentId;
@@ -102,7 +100,6 @@ export default function SendFeedback({ navigation, route }: Props) {
         });
     };
 
-    // Helper fecha local
     const getLocalYYYYMMDD = (date: Date) => {
         const tzOff = date.getTimezoneOffset() * 60000;
         const local = new Date(date.getTime() - tzOff);
@@ -141,7 +138,7 @@ export default function SendFeedback({ navigation, route }: Props) {
         fetchAthleteStats();
     }, [athleteId]);
     
-    // 2. CARGAR NIVELES REALES Y UNIDAD
+    // 2. CARGAR NIVELES REALES Y UNIDAD (CON CORRECCIÓN DE DATOS)
     useEffect(() => {
         const fetchTestDetails = async () => {
             if (!assignmentId) {
@@ -166,6 +163,7 @@ export default function SendFeedback({ navigation, route }: Props) {
 
                 if (testError) throw testError;
 
+                // Detectar Unidad
                 if (testData?.tipo_metrica) {
                     const raw = testData.tipo_metrica.toLowerCase().trim();
                     let shortUnit = testData.tipo_metrica;
@@ -189,9 +187,20 @@ export default function SendFeedback({ navigation, route }: Props) {
                     setUnit(shortUnit);
                 }
                 
-                const loadedLevels = testData?.niveles && Array.isArray(testData.niveles) 
-                    ? (testData.niveles as TestRange[]) 
-                    : [];
+                // --- CORRECCIÓN CRÍTICA DE NIVELES ---
+                // Normalizamos 'label' vs 'nombre' para que siempre exista 'nombre'
+                let loadedLevels: TestRange[] = [];
+                
+                if (testData?.niveles && Array.isArray(testData.niveles)) {
+                    loadedLevels = testData.niveles.map((l: any) => ({
+                        id: l.id,
+                        // Aquí está el truco: si no hay 'nombre', usa 'label', si no, "Nivel X"
+                        nombre: l.nombre || l.label || 'Nivel', 
+                        min: Number(l.min),
+                        max: Number(l.max),
+                        color: l.color || 'gray'
+                    }));
+                }
                 
                 setTestRanges(loadedLevels);
 
@@ -219,7 +228,6 @@ export default function SendFeedback({ navigation, route }: Props) {
 
     // 4. GUARDAR RESULTADO
     const saveResultToSupabase = async () => {
-        // Cerrar alerta anterior si existía
         closeAlert(); 
         
         if (!assignmentId || !athleteId || !metricValue.trim()) return;
@@ -251,7 +259,6 @@ export default function SendFeedback({ navigation, route }: Props) {
                     });
             }
 
-            // ÉXITO - Usamos CustomAlert
             showAlert(
                 "¡Excelente!",
                 "El resultado ha sido guardado correctamente.",
@@ -261,7 +268,6 @@ export default function SendFeedback({ navigation, route }: Props) {
             );
 
         } catch (err: any) {
-            // ERROR - Usamos CustomAlert
             showAlert(
                 "Error",
                 err.message || "No se pudo guardar el resultado.",
@@ -282,12 +288,11 @@ export default function SendFeedback({ navigation, route }: Props) {
         
         const nivelFinal = calculatedLevel?.nombre ? calculatedLevel.nombre : "Sin Clasificación";
         
-        // CONFIRMACIÓN - Usamos CustomAlert con botón de confirmar y cancelar
         showAlert(
             "¿Confirmar Resultado?",
             `Vas a registrar:\n\nValor: ${metricValue} ${unit}\nNivel: ${nivelFinal}`,
             "info",
-            saveResultToSupabase, // Acción al confirmar
+            saveResultToSupabase,
             "Sí, Guardar",
             "Cancelar"
         );
@@ -377,7 +382,6 @@ export default function SendFeedback({ navigation, route }: Props) {
                                     styles.badge, 
                                     { backgroundColor: getLevelStyle(true, calculatedLevel.color).bg, borderColor: getLevelStyle(true, calculatedLevel.color).border }
                                 ]}>
-                                    {/* CORRECCIÓN AQUI: Protección contra undefined en toUpperCase */}
                                     <Text style={[
                                         styles.badgeText, 
                                         { color: getLevelStyle(true, calculatedLevel.color).text }
@@ -490,7 +494,6 @@ export default function SendFeedback({ navigation, route }: Props) {
                 </KeyboardAvoidingView>
             </SafeAreaView>
 
-            {/* RENDERIZADO DEL ALERT PERSONALIZADO */}
             <CustomAlert 
                 visible={alertConfig.visible}
                 title={alertConfig.title}

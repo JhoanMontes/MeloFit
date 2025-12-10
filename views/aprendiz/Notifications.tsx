@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,16 +16,14 @@ import {
   Bell, 
   MessageSquare, 
   ClipboardList, 
-  Clock, 
-  CheckCircle2,
-  Calendar
+  CheckCircle2
 } from "lucide-react-native";
 
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
-import { AprendizStackParamList } from "../../navigation/types";
 
-type Props = NativeStackScreenProps<AprendizStackParamList, "Notifications">;
+// Ajusta según tus rutas reales
+type Props = NativeStackScreenProps<any, "Notifications">;
 
 // --- COLORES ---
 const COLORS = {
@@ -37,17 +35,27 @@ const COLORS = {
   textMuted: "#64748b",
   borderColor: "#e2e8f0",
   shadow: "#000000",
-  newBadge: "#ef444498", // Rojo para "Nuevo"
+  newBadge: "#ef4444",
+  
+  // Colores por tipo de notificación
+  assignBg: "#eff6ff",    // Azul
+  assignIcon: "#2563eb",
+  
+  feedbackBg: "#fff7ed",  // Naranja
+  feedbackIcon: "#ea580c",
+  
+  resultBg: "#f0fdf4",    // Verde
+  resultIcon: "#16a34a",
 };
 
 interface NotificationItem {
-  id: string;
-  type: 'assignment' | 'feedback';
+  id: string; // UUID
   title: string;
   message: string;
-  date: string; // ISO date string
+  type: string; // 'asignacion', 'resultado', 'feedback' (segun tu trigger)
   read: boolean;
-  relatedId?: number; // ID para navegar (ej. resultado_id)
+  date: string; 
+  relatedId?: number; 
 }
 
 export default function NotificationsScreen({ navigation }: Props) {
@@ -56,6 +64,7 @@ export default function NotificationsScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [userRole, setUserRole] = useState<'atleta' | 'entrenador' | null>(null);
 
   useEffect(() => {
     fetchNotifications();
@@ -65,87 +74,42 @@ export default function NotificationsScreen({ navigation }: Props) {
     if (!user) return;
     
     try {
-      // 1. Obtener ID del atleta
-      const { data: userData } = await supabase.from('usuario').select('no_documento').eq('auth_id', user.id).single();
-      if (!userData) return;
-      const docId = userData.no_documento;
+      // 1. Obtener documento y rol del usuario actual
+      const { data: userData, error: userError } = await supabase
+        .from('usuario')
+        .select('no_documento, rol')
+        .eq('auth_id', user.id)
+        .single();
+      
+      if (userError || !userData) throw new Error("Usuario no encontrado");
+      
+      setUserRole(userData.rol as 'atleta' | 'entrenador');
 
-      // Calcular fecha de hace 7 días para filtrar "recientes"
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const dateLimit = sevenDaysAgo.toISOString().split('T')[0];
+      // 2. Consultar la tabla REAL de notificaciones
+      const { data: notifData, error: notifError } = await supabase
+        .from('notificacion')
+        .select('*')
+        .eq('usuario_no_documento', userData.no_documento)
+        .order('fecha_creacion', { ascending: false }) // Las más recientes primero
+        .limit(50); // Límite razonable
 
-      // 2. Consultar Nuevas Asignaciones (Últimos 7 días)
-      const { data: assignments, error: assignError } = await supabase
-        .from('prueba_asignada_has_atleta')
-        .select(`
-          prueba_asignada!inner (
-            id,
-            fecha_asignacion,
-            fecha_limite,
-            prueba ( nombre )
-          ),
-          grupo ( nombre )
-        `)
-        .eq('atleta_no_documento', docId)
-        .gte('prueba_asignada.fecha_asignacion', dateLimit);
+      if (notifError) throw notifError;
 
-      if (assignError) throw assignError;
-
-      // 3. Consultar Nuevos Comentarios (Últimos 7 días)
-      // Nota: Comentario -> Resultado -> Atleta
-      const { data: comments, error: commentError } = await supabase
-        .from('comentario')
-        .select(`
-          id,
-          mensaje,
-          fecha,
-          resultado_prueba!inner (
-            id,
-            atleta_no_documento,
-            prueba_asignada ( prueba ( nombre ) )
-          )
-        `)
-        .eq('resultado_prueba.atleta_no_documento', docId)
-        .gte('fecha', dateLimit);
-
-      if (commentError) throw commentError;
-
-      // 4. Unificar y Formatear
-      const formattedNotifications: NotificationItem[] = [];
-
-      // Procesar Asignaciones
-      assignments?.forEach((item: any) => {
-        formattedNotifications.push({
-          id: `assign-${item.prueba_asignada.id}`,
-          type: 'assignment',
-          title: 'Nueva Prueba Asignada',
-          message: `Tu entrenador asignó "${item.prueba_asignada.prueba.nombre}" en el grupo ${item.grupo?.nombre || 'General'}.`,
-          date: item.prueba_asignada.fecha_asignacion,
-          read: false, // Simulado
-        });
-      });
-
-      // Procesar Comentarios
-      comments?.forEach((item: any) => {
-        formattedNotifications.push({
-          id: `comment-${item.id}`,
-          type: 'feedback',
-          title: 'Nuevo Feedback Recibido',
-          message: `Comentario en "${item.resultado_prueba?.prueba_asignada?.prueba?.nombre}": ${item.mensaje}`,
-          date: item.fecha,
-          read: false,
-          relatedId: item.resultado_prueba.id
-        });
-      });
-
-      // Ordenar por fecha descendente (lo más nuevo arriba)
-      formattedNotifications.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      setNotifications(formattedNotifications);
+      if (notifData) {
+        const mapped = notifData.map((n: any) => ({
+          id: n.id,
+          title: n.titulo,
+          message: n.mensaje,
+          type: n.tipo,
+          read: n.leido,
+          date: n.fecha_creacion,
+          relatedId: n.referencia_id
+        }));
+        setNotifications(mapped);
+      }
 
     } catch (err) {
-      console.error("Error cargando notificaciones:", err);
+      console.error("Error fetching notifications:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -157,41 +121,92 @@ export default function NotificationsScreen({ navigation }: Props) {
     fetchNotifications();
   };
 
-  // Renderizado de cada item
+  // Acción al tocar: Marcar como leído y navegar
+  const handlePressNotification = async (item: NotificationItem) => {
+    // 1. Navegación Inteligente
+    if (userRole === 'entrenador' && item.type === 'resultado') {
+       // Ejemplo: Ir al detalle de esa asignación para ver el resultado
+       // navigation.navigate('TestAssignmentDetail', { assignmentId: item.relatedId });
+       console.log("Navegar a evaluar resultado ID:", item.relatedId);
+    } 
+    else if (userRole === 'atleta') {
+       if (item.type === 'asignacion') {
+         navigation.navigate('MisPruebas'); 
+       } else if (item.type === 'feedback') {
+         // navigation.navigate('ResultDetail', { resultId: item.relatedId });
+       }
+    }
+
+    // 2. Marcar como leído en BD (si no lo está)
+    if (!item.read) {
+      // Actualización optimista en UI
+      setNotifications(prev => prev.map(n => n.id === item.id ? {...n, read: true} : n));
+      
+      // Actualización en Background a Supabase
+      await supabase
+        .from('notificacion')
+        .update({ leido: true })
+        .eq('id', item.id);
+    }
+  };
+
   const renderItem = ({ item }: { item: NotificationItem }) => {
-    const isAssignment = item.type === 'assignment';
-    
+    let icon;
+    let bgIconColor;
+    let iconColor;
+
+    // Mapeo de tipos según tus triggers SQL ('asignacion', 'resultado')
+    switch (item.type) {
+      case 'asignacion':
+        icon = <ClipboardList size={22} color={COLORS.assignIcon} />;
+        bgIconColor = COLORS.assignBg;
+        iconColor = COLORS.assignIcon;
+        break;
+      case 'feedback':
+        icon = <MessageSquare size={22} color={COLORS.feedbackIcon} />;
+        bgIconColor = COLORS.feedbackBg;
+        iconColor = COLORS.feedbackIcon;
+        break;
+      case 'resultado': // Trigger: 'resultado'
+        icon = <CheckCircle2 size={22} color={COLORS.resultIcon} />;
+        bgIconColor = COLORS.resultBg;
+        iconColor = COLORS.resultIcon;
+        break;
+      default:
+        icon = <Bell size={22} color={COLORS.textMuted} />;
+        bgIconColor = COLORS.background;
+    }
+
     return (
-      <View style={[styles.card, !item.read && styles.cardUnread]}>
+      <Pressable 
+        style={[styles.card, !item.read && styles.cardUnread]}
+        onPress={() => handlePressNotification(item)}
+      >
         <View style={styles.row}>
-          
-          {/* Icono */}
-          <View style={[styles.iconBox, isAssignment ? styles.bgBlue : styles.bgOrange]}>
-            {isAssignment ? (
-              <ClipboardList size={20} color={isAssignment ? "#2563eb" : "#ea580c"} />
-            ) : (
-              <MessageSquare size={20} color={isAssignment ? "#2563eb" : "#ea580c"} />
-            )}
+          {/* Icono Temático */}
+          <View style={[styles.iconBox, { backgroundColor: bgIconColor }]}>
+            {icon}
           </View>
 
-          {/* Contenido */}
+          {/* Textos */}
           <View style={styles.content}>
             <View style={styles.headerRow}>
-              <Text style={styles.title}>{item.title}</Text>
+              <Text style={[styles.title, !item.read && styles.titleUnread]}>
+                {item.title}
+              </Text>
               <Text style={styles.date}>
-                {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                {new Date(item.date).toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })}
               </Text>
             </View>
             <Text style={styles.message} numberOfLines={2}>
               {item.message}
             </Text>
           </View>
-
         </View>
         
-        {/* Indicador de "Nuevo" (Punto rojo) */}
+        {/* Punto indicador de no leído */}
         {!item.read && <View style={styles.dot} />}
-      </View>
+      </Pressable>
     );
   };
 
@@ -206,7 +221,7 @@ export default function NotificationsScreen({ navigation }: Props) {
             <ArrowLeft size={24} color={COLORS.textDark} />
           </Pressable>
           <Text style={styles.headerTitle}>Notificaciones</Text>
-          <View style={{ width: 40 }} />
+          <View style={{ width: 44 }} /> 
         </View>
 
         {/* Lista */}
@@ -223,8 +238,13 @@ export default function NotificationsScreen({ navigation }: Props) {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
             ListEmptyComponent={
               <View style={styles.emptyState}>
-                <Bell size={48} color={COLORS.borderColor} />
-                <Text style={styles.emptyText}>No tienes notificaciones recientes.</Text>
+                <View style={styles.emptyIconBg}>
+                  <Bell size={32} color={COLORS.textMuted} />
+                </View>
+                <Text style={styles.emptyTitle}>Estás al día</Text>
+                <Text style={styles.emptyText}>
+                  No tienes notificaciones pendientes por leer.
+                </Text>
               </View>
             }
           />
@@ -235,34 +255,94 @@ export default function NotificationsScreen({ navigation }: Props) {
   );
 }
 
-// --- ESTILOS ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 16 },
-  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.white, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark },
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: 24, 
+    paddingVertical: 16,
+    backgroundColor: COLORS.background,
+  },
+  backButton: { 
+    width: 44, 
+    height: 44, 
+    borderRadius: 22, 
+    backgroundColor: COLORS.white, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    borderWidth: 1, 
+    borderColor: COLORS.borderColor,
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1
+  },
+  headerTitle: { 
+    fontSize: 18, 
+    fontWeight: 'bold', 
+    color: COLORS.textDark 
+  },
 
-  list: { paddingHorizontal: 24, paddingBottom: 20, paddingTop: 10 },
+  list: { paddingHorizontal: 24, paddingBottom: 20, paddingTop: 8 },
   
-  card: { backgroundColor: COLORS.white, padding: 16, borderRadius: 20, marginBottom: 12, borderWidth: 1, borderColor: COLORS.borderColor, shadowColor: COLORS.shadow, shadowOffset: {width:0, height:1}, shadowOpacity:0.03, shadowRadius:4, elevation:1 },
-  cardUnread: { backgroundColor: '#ffffff', borderColor: '#bfdbfe' }, // Sutil borde azul si es nuevo
+  card: { 
+    backgroundColor: COLORS.white, 
+    padding: 16, 
+    borderRadius: 24, 
+    marginBottom: 12, 
+    borderWidth: 1, 
+    borderColor: COLORS.borderColor, 
+    shadowColor: COLORS.shadow, 
+    shadowOffset: {width:0, height:2}, 
+    shadowOpacity:0.03, 
+    shadowRadius:8, 
+    elevation:2 
+  },
+  cardUnread: { 
+    backgroundColor: '#ffffff', 
+    borderColor: '#bfdbfe', // Azul muy claro
+    borderLeftWidth: 4, 
+    borderLeftColor: COLORS.primary 
+  }, 
   
-  row: { flexDirection: 'row', gap: 16 },
+  row: { flexDirection: 'row', gap: 16, alignItems: 'center' },
   
-  iconBox: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  bgBlue: { backgroundColor: COLORS.primaryLight },
-  bgOrange: { backgroundColor: '#fff7ed' }, // orange-50
+  iconBox: { 
+    width: 52, 
+    height: 52, 
+    borderRadius: 18, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
 
   content: { flex: 1, justifyContent: 'center' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  title: { fontSize: 14, fontWeight: '700', color: COLORS.textDark },
-  date: { fontSize: 12, color: COLORS.textMuted, fontWeight: '500' },
-  message: { fontSize: 13, color: COLORS.textMuted, lineHeight: 18 },
+  title: { fontSize: 15, fontWeight: '600', color: COLORS.textDark },
+  titleUnread: { fontWeight: '800', color: COLORS.primary },
+  date: { fontSize: 11, color: COLORS.textMuted, fontWeight: '600' },
+  message: { fontSize: 13, color: COLORS.textMuted, lineHeight: 18, fontWeight: '500' },
 
-  dot: { position: 'absolute', top: 16, right: 16, width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.newBadge },
+  dot: { 
+    position: 'absolute', 
+    top: 16, 
+    right: 16, 
+    width: 10, 
+    height: 10, 
+    borderRadius: 5, 
+    backgroundColor: COLORS.newBadge,
+    borderWidth: 2,
+    borderColor: COLORS.white
+  },
 
-  emptyState: { alignItems: 'center', marginTop: 100, opacity: 0.6 },
-  emptyText: { marginTop: 16, fontSize: 16, color: COLORS.textMuted },
+  emptyState: { alignItems: 'center', marginTop: 120, paddingHorizontal: 40 },
+  emptyIconBg: {
+    width: 80, height: 80, backgroundColor: '#f1f5f9', borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 16
+  },
+  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 8 },
+  emptyText: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', lineHeight: 20 },
 });
