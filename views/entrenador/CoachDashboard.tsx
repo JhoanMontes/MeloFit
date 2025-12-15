@@ -43,17 +43,17 @@ const COLORS = {
     borderColor: "#e2e8f0",
     shadow: "#64748b",
     success: "#10b981",
-    danger: "#ef4444", 
+    danger: "#ef4444",
     warning: "#f59e0b",
 };
 
 // Paleta para avatares de grupos
 const GROUP_COLORS = [
-    { bg: '#e0e7ff', icon: '#4338ca' }, 
-    { bg: '#dcfce7', icon: '#15803d' }, 
-    { bg: '#ffedd5', icon: '#c2410c' }, 
-    { bg: '#dbeafe', icon: '#1d4ed8' }, 
-    { bg: '#f3e8ff', icon: '#7e22ce' } 
+    { bg: '#e0e7ff', icon: '#4338ca' },
+    { bg: '#dcfce7', icon: '#15803d' },
+    { bg: '#ffedd5', icon: '#c2410c' },
+    { bg: '#dbeafe', icon: '#1d4ed8' },
+    { bg: '#f3e8ff', icon: '#7e22ce' }
 ];
 
 export default function CoachDashboard({ navigation }: Props) {
@@ -61,7 +61,7 @@ export default function CoachDashboard({ navigation }: Props) {
 
     // --- ESTADOS UI ---
     const [showProfileModal, setShowProfileModal] = useState(false);
-    
+
     // --- ESTADOS DATOS ---
     const [nombre, setNombre] = useState<String>("Entrenador");
     const [recentGroups, setRecentGroups] = useState<any[]>([]);
@@ -92,7 +92,7 @@ export default function CoachDashboard({ navigation }: Props) {
                             .select('*', { count: 'exact', head: true })
                             .eq('usuario_no_documento', data.no_documento)
                             .eq('leido', false);
-                        
+
                         setHasNotifications(count !== null && count > 0);
                     }
                 } catch (e) {
@@ -187,11 +187,11 @@ export default function CoachDashboard({ navigation }: Props) {
                             const key = `${item.prueba_asignada.id}-${item.grupo_codigo}`;
                             if (!uniqueMap.has(key)) uniqueMap.set(key, item);
                         });
-                        
+
                         const finalAssignments = await Promise.all(
                             Array.from(uniqueMap.values()).map(async (item: any) => {
                                 const p = item.prueba_asignada;
-                                
+
                                 // Calcular progreso real
                                 const { count: total } = await supabase
                                     .from("prueba_asignada_has_atleta")
@@ -360,7 +360,14 @@ export default function CoachDashboard({ navigation }: Props) {
                                                 <Text style={styles.assignmentTest} numberOfLines={1}>{item.test}</Text>
                                             </View>
                                             <View style={styles.deadlineBadge}>
-                                                <Text style={styles.deadlineText}>{new Date(item.deadline).toLocaleDateString(undefined, {month:'numeric', day:'numeric'})}</Text>
+                                                <Text style={styles.deadlineText}>
+                                                    {/* Mostramos DD/MM manualmente */}
+                                                    {(() => {
+                                                        if (!item.deadline) return "";
+                                                        const parts = item.deadline.split('T')[0].split('-'); // ["2025", "12", "20"]
+                                                        return `${parts[2]}/${parts[1]}`; // Retorna "20/12"
+                                                    })()}
+                                                </Text>
                                             </View>
                                         </View>
                                         <View style={styles.progressContainer}>
@@ -499,7 +506,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: COLORS.white,
     },
-    
+
     // Quick Actions
     quickActionsContainer: {
         flexDirection: 'row',

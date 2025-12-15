@@ -48,7 +48,7 @@ export default function GroupDetail({ navigation, route }: Props) {
 
     const [loading, setLoading] = useState(true);
     const [leaving, setLeaving] = useState(false);
-    
+
     // Datos
     const [groupInfo, setGroupInfo] = useState<any>(null);
     const [memberCount, setMemberCount] = useState(0);
@@ -92,14 +92,14 @@ export default function GroupDetail({ navigation, route }: Props) {
     const formatUnit = (raw: string | null) => {
         if (!raw) return '';
         const r = raw.toLowerCase();
-        
+
         if (r === 'time_min' || r.includes('minutos') || r.includes('minute')) return 'Min';
         if (r === 'time_sec' || r.includes('segundos') || r.includes('second')) return 'Seg';
         if (r.includes('rep')) return 'Reps';
         if (r.includes('kilo') || r.includes('kg')) return 'Kg';
         if (r.includes('metr')) return 'm';
-        
-        return raw; 
+
+        return raw;
     };
 
     const fetchGroupDetails = async () => {
@@ -229,9 +229,9 @@ export default function GroupDetail({ navigation, route }: Props) {
     return (
         <View style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-            
+
             {/* INTEGRACIÓN CUSTOM ALERT */}
-            <CustomAlert 
+            <CustomAlert
                 visible={alertConfig.visible}
                 title={alertConfig.title}
                 message={alertConfig.message}
@@ -279,14 +279,16 @@ export default function GroupDetail({ navigation, route }: Props) {
                             <View style={styles.statItem}>
                                 <Calendar size={16} color={COLORS.textMuted} style={{ marginBottom: 4 }} />
                                 <Text style={styles.statLabel}>Creado</Text>
-                                <Text style={styles.statValue}>{new Date(groupInfo?.fecha_creacion).toLocaleDateString()}</Text>
+                                <Text style={styles.statValue}>
+                                    {groupInfo?.fecha_creacion ? groupInfo.fecha_creacion.split('T')[0].split('-').reverse().join('/') : '-'}
+                                </Text>
                             </View>
                         </View>
 
                         {/* BOTÓN SALIR (Solo si es atleta) */}
                         {userRole === 'atleta' && (
-                            <Pressable 
-                                onPress={handleLeaveGroup} 
+                            <Pressable
+                                onPress={handleLeaveGroup}
                                 style={styles.leaveButton}
                                 disabled={leaving}
                             >
@@ -294,7 +296,7 @@ export default function GroupDetail({ navigation, route }: Props) {
                                     <ActivityIndicator size="small" color={COLORS.danger} />
                                 ) : (
                                     <>
-                                        <LogOut size={16} color={COLORS.danger} style={{marginRight: 6}} />
+                                        <LogOut size={16} color={COLORS.danger} style={{ marginRight: 6 }} />
                                         <Text style={styles.leaveText}>Salir del Equipo</Text>
                                     </>
                                 )}
@@ -318,7 +320,9 @@ export default function GroupDetail({ navigation, route }: Props) {
                                         </View>
                                         <View>
                                             <Text style={styles.resultTestName}>{res.prueba}</Text>
-                                            <Text style={styles.resultDate}>{new Date(res.fecha).toLocaleDateString()}</Text>
+                                            <Text style={styles.resultDate}>
+                                                {res.fecha ? res.fecha.split('T')[0].split('-').reverse().join('/') : ''}
+                                            </Text>
                                         </View>
                                     </View>
                                     <View style={styles.resultRight}>
@@ -385,7 +389,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
         paddingBottom: 40,
     },
-    
+
     // HERO CARD
     heroCard: {
         backgroundColor: COLORS.white,

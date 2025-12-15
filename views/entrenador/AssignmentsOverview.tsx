@@ -12,18 +12,18 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { 
-    ChevronLeft, 
-    Search, 
-    Calendar, 
-    CheckCircle2, 
+import {
+    ChevronLeft,
+    Search,
+    Calendar,
+    CheckCircle2,
     Users,
     AlertCircle
 } from "lucide-react-native";
 
-import { useAuth } from "../../context/AuthContext"; 
-import { EntrenadorStackParamList } from "../../navigation/types"; 
-import { supabase } from "../../lib/supabase"; 
+import { useAuth } from "../../context/AuthContext";
+import { EntrenadorStackParamList } from "../../navigation/types";
+import { supabase } from "../../lib/supabase";
 
 type Props = NativeStackScreenProps<EntrenadorStackParamList, "AssignmentsOverview">;
 
@@ -42,7 +42,7 @@ const COLORS = {
 
 export default function AssignmentsOverview({ navigation }: Props) {
     const { user } = useAuth();
-    
+
     // Estados
     const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
     const [loading, setLoading] = useState(true);
@@ -76,7 +76,7 @@ export default function AssignmentsOverview({ navigation }: Props) {
             myGroups.forEach(g => groupMap[g.codigo] = g.nombre);
 
             const nowISO = new Date().toISOString();
-            
+
             // Query Base: Partimos de la tabla intermedia que tiene grupo_codigo
             let query = supabase
                 .from("prueba_asignada_has_atleta")
@@ -113,24 +113,24 @@ export default function AssignmentsOverview({ navigation }: Props) {
 
                 // 2. Enriquecer con conteos
                 const enriched = await Promise.all(uniqueItems.map(async (item: any) => {
-                     const p = item.prueba_asignada;
-                     
-                     const { count: total } = await supabase.from("prueba_asignada_has_atleta")
-                        .select("*", { count: "exact", head: true }).eq("prueba_asignada_id", p.id);
-                     
-                     const { count: completed } = await supabase.from("resultado_prueba")
+                    const p = item.prueba_asignada;
+
+                    const { count: total } = await supabase.from("prueba_asignada_has_atleta")
                         .select("*", { count: "exact", head: true }).eq("prueba_asignada_id", p.id);
 
-                     return {
-                         id: p.id,
-                         fecha_asignacion: p.fecha_asignacion,
-                         fecha_limite: p.fecha_limite,
-                         testName: p.prueba?.nombre,
-                         groupName: groupMap[item.grupo_codigo],
-                         total: total || 0,
-                         completed: completed || 0,
-                         progress: (total && total > 0) ? Math.round(((completed || 0) / total) * 100) : 0
-                     };
+                    const { count: completed } = await supabase.from("resultado_prueba")
+                        .select("*", { count: "exact", head: true }).eq("prueba_asignada_id", p.id);
+
+                    return {
+                        id: p.id,
+                        fecha_asignacion: p.fecha_asignacion,
+                        fecha_limite: p.fecha_limite,
+                        testName: p.prueba?.nombre,
+                        groupName: groupMap[item.grupo_codigo],
+                        total: total || 0,
+                        completed: completed || 0,
+                        progress: (total && total > 0) ? Math.round(((completed || 0) / total) * 100) : 0
+                    };
                 }));
 
                 // Ordenar
@@ -152,15 +152,16 @@ export default function AssignmentsOverview({ navigation }: Props) {
     };
 
     // Filtro local
-    const filteredData = assignments.filter(item => 
+    const filteredData = assignments.filter(item =>
         (item.testName?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
         (item.groupName?.toLowerCase() || "").includes(searchQuery.toLowerCase())
     );
 
     const formatDate = (dateString: string) => {
         if (!dateString) return "";
-        const date = new Date(dateString);
-        return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+        // Cortamos en la T, luego separamos por guiones, invertimos y unimos con /
+        // Esto convierte "2025-12-20" en "20/12/2025" sin tocar la zona horaria.
+        return dateString.split('T')[0].split('-').reverse().join('/');
     };
 
     const renderCard = ({ item }: { item: any }) => {
@@ -170,7 +171,7 @@ export default function AssignmentsOverview({ navigation }: Props) {
         const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
         return (
-            <Pressable 
+            <Pressable
                 style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
                 onPress={() => navigation.navigate("TestAssignmentDetail", {
                     assignmentId: item.id,
@@ -185,7 +186,7 @@ export default function AssignmentsOverview({ navigation }: Props) {
                         <Text style={styles.groupBadgeText}>{item.groupName}</Text>
                     </View>
                     <View style={[
-                        styles.statusBadge, 
+                        styles.statusBadge,
                         isExpired ? { backgroundColor: '#fee2e2' } : { backgroundColor: '#dcfce7' }
                     ]}>
                         <Text style={[
@@ -222,7 +223,7 @@ export default function AssignmentsOverview({ navigation }: Props) {
                     </View>
                     <View style={styles.progressBarBg}>
                         <View style={[
-                            styles.progressBarFill, 
+                            styles.progressBarFill,
                             { width: `${item.progress}%`, backgroundColor: item.progress === 100 ? COLORS.success : COLORS.primary }
                         ]} />
                     </View>
@@ -234,14 +235,14 @@ export default function AssignmentsOverview({ navigation }: Props) {
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
-            
+
             {/* Header */}
             <View style={styles.header}>
                 <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
                     <ChevronLeft size={24} color={COLORS.textDark} />
                 </Pressable>
                 <Text style={styles.headerTitle}>Gestionar Asignaciones</Text>
-                <View style={{ width: 40 }} /> 
+                <View style={{ width: 40 }} />
             </View>
 
             {/* Search */}
@@ -258,13 +259,13 @@ export default function AssignmentsOverview({ navigation }: Props) {
 
             {/* Tabs */}
             <View style={styles.tabContainer}>
-                <Pressable 
+                <Pressable
                     style={[styles.tab, activeTab === 'active' && styles.activeTab]}
                     onPress={() => setActiveTab('active')}
                 >
                     <Text style={[styles.tabText, activeTab === 'active' && styles.activeTabText]}>Activas</Text>
                 </Pressable>
-                <Pressable 
+                <Pressable
                     style={[styles.tab, activeTab === 'history' && styles.activeTab]}
                     onPress={() => setActiveTab('history')}
                 >
@@ -288,8 +289,8 @@ export default function AssignmentsOverview({ navigation }: Props) {
                         <View style={styles.emptyContainer}>
                             <CheckCircle2 size={48} color={COLORS.borderColor} />
                             <Text style={styles.emptyText}>
-                                {activeTab === 'active' 
-                                    ? "No hay pruebas pendientes." 
+                                {activeTab === 'active'
+                                    ? "No hay pruebas pendientes."
                                     : "No hay historial de pruebas."}
                             </Text>
                         </View>
@@ -350,7 +351,7 @@ const styles = StyleSheet.create({
     tabContainer: {
         flexDirection: 'row',
         marginHorizontal: 16,
-        backgroundColor: '#e2e8f0', 
+        backgroundColor: '#e2e8f0',
         borderRadius: 12,
         padding: 4,
         marginBottom: 16,

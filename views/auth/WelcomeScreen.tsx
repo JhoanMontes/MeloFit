@@ -109,7 +109,7 @@ export default function WelcomeScreen({ navigation }: Props) {
             }}
           >
             <Text style={styles.heroTitle}>
-              Melo<Text style={styles.highlight}>Fit</Text>
+              Sport<Text style={styles.highlight}>Sync</Text>
             </Text>
             <Text style={styles.heroSubtitle}>
               La plataforma definitiva para gestionar rendimiento deportivo.

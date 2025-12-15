@@ -94,21 +94,21 @@ export default function Dashboard({ navigation }: Props) {
   const formatUnit = (raw: string | null) => {
     if (!raw) return '';
     const r = raw.toLowerCase();
-    
+
     if (r === 'time_min' || r.includes('minutos') || r.includes('minute')) {
-        return 'Min';
-    } 
+      return 'Min';
+    }
     else if (r === 'time_sec' || r.includes('segundos') || r.includes('second')) {
-        return 'Seg';
+      return 'Seg';
     }
     else if (r.includes('rep')) {
-        return 'Reps';
+      return 'Reps';
     }
     else if (r.includes('kilo') || r.includes('kg')) {
-        return 'Kg';
+      return 'Kg';
     }
     else if (r.includes('metr')) {
-        return 'm';
+      return 'm';
     }
     return raw; // Retorno por defecto si no coincide
   };
@@ -120,7 +120,7 @@ export default function Dashboard({ navigation }: Props) {
       // 1. Usuario
       const { data: userRecord } = await supabase
         .from('usuario').select('no_documento, nombre_completo').eq('auth_id', user.id).single();
-      
+
       if (!userRecord) return;
 
       setUserData({ nombre: userRecord.nombre_completo?.split(" ")[0] || "Atleta", doc: userRecord.no_documento });
@@ -152,14 +152,14 @@ export default function Dashboard({ navigation }: Props) {
           grupo ( nombre ) 
         `)
         .eq('atleta_no_documento', docId)
-        .gte('prueba_asignada.fecha_limite', today) 
+        .gte('prueba_asignada.fecha_limite', today)
         .order('prueba_asignada(fecha_limite)', { ascending: true });
 
       const completedIds = resultsData?.map((r: any) => r.prueba_asignada.id) || [];
       const pending = assignmentsData
         ?.filter((item: any) => !completedIds.includes(item.prueba_asignada.id))
         .map((item: any) => ({ ...item.prueba_asignada, grupo_nombre: item.grupo?.nombre })) || [];
-      
+
       setPendingTests(pending);
 
       // 5. Notificaciones
@@ -188,13 +188,13 @@ export default function Dashboard({ navigation }: Props) {
     try {
       const { data: groupExists } = await supabase.from('grupo').select('codigo, nombre').eq('codigo', groupCodeInput.trim()).single();
       if (!groupExists) { showAlert("Error", "Grupo no encontrado.", "error"); setJoining(false); return; }
-      
+
       const { data: already } = await supabase.from('atleta_has_grupo').select('*').eq('atleta_no_documento', userData.doc).eq('grupo_codigo', groupExists.codigo).single();
       if (already) { showAlert("Info", "Ya estás en este grupo.", "info"); setJoining(false); return; }
-      
+
       const { error } = await supabase.from('atleta_has_grupo').insert({ atleta_no_documento: userData.doc, grupo_codigo: groupExists.codigo });
       if (error) throw error;
-      
+
       showAlert("¡Éxito!", `Te uniste a ${groupExists.nombre}`, "success");
       setShowJoinGroupModal(false); setGroupCodeInput(""); fetchDashboardData();
     } catch (e) { showAlert("Error", "No se pudo unir.", "error"); } finally { setJoining(false); }
@@ -209,7 +209,7 @@ export default function Dashboard({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <CustomAlert visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} type={alertConfig.type} onClose={() => setAlertConfig({...alertConfig, visible: false})} />
+      <CustomAlert visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} type={alertConfig.type} onClose={() => setAlertConfig({ ...alertConfig, visible: false })} />
 
       {/* MODALES */}
       <Modal animationType="fade" transparent={true} visible={showProfileModal} onRequestClose={() => setShowProfileModal(false)}>
@@ -249,7 +249,7 @@ export default function Dashboard({ navigation }: Props) {
       </Modal>
 
       <SafeAreaView edges={['top']} style={styles.safeArea}>
-        
+
         {/* HEADER */}
         <View style={styles.header}>
           <View>
@@ -267,12 +267,12 @@ export default function Dashboard({ navigation }: Props) {
           </View>
         </View>
 
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent} 
-          showsVerticalScrollIndicator={false} 
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
         >
-          
+
           {/* 1. SECCIÓN AGENDA */}
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeader}>
@@ -285,27 +285,27 @@ export default function Dashboard({ navigation }: Props) {
             </View>
 
             {pendingTests.length > 0 ? (
-              <ScrollView 
-                horizontal 
+              <ScrollView
+                horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.agendaScrollContent} // Padding corregido para no pegarse al borde
               >
                 {pendingTests.map((test, index) => {
                   const daysLeft = getDaysRemaining(test.fecha_limite);
                   const isUrgent = daysLeft <= 2;
-                  
+
                   return (
-                    <Pressable 
-                      key={index} 
-                      style={({pressed}) => [
-                        styles.agendaCard, 
+                    <Pressable
+                      key={index}
+                      style={({ pressed }) => [
+                        styles.agendaCard,
                         isUrgent && styles.agendaCardUrgent,
                         pressed && styles.cardPressed
                       ]}
                     >
                       <View style={styles.agendaHeader}>
                         <View style={[
-                          styles.agendaIcon, 
+                          styles.agendaIcon,
                           isUrgent ? { backgroundColor: '#fee2e2' } : { backgroundColor: '#e0f2fe' }
                         ]}>
                           <Clock size={18} color={isUrgent ? COLORS.danger : COLORS.primary} />
@@ -316,12 +316,12 @@ export default function Dashboard({ navigation }: Props) {
                           </View>
                         )}
                       </View>
-                      
+
                       <Text style={styles.agendaTitle} numberOfLines={2}>{test.prueba?.nombre}</Text>
                       <Text style={styles.agendaGroup} numberOfLines={1}>{test.grupo_nombre || "General"}</Text>
-                      
+
                       <View style={styles.agendaFooter}>
-                        <Calendar size={12} color={isUrgent ? COLORS.danger : COLORS.textMuted} style={{marginRight: 4}} />
+                        <Calendar size={12} color={isUrgent ? COLORS.danger : COLORS.textMuted} style={{ marginRight: 4 }} />
                         <Text style={[styles.agendaDate, isUrgent && { color: COLORS.danger }]}>
                           {daysLeft === 0 ? "Vence hoy" : daysLeft < 0 ? "Vencida" : `${daysLeft} días restantes`}
                         </Text>
@@ -345,49 +345,49 @@ export default function Dashboard({ navigation }: Props) {
 
           {/* 2. SECCIÓN GRUPOS */}
           <View style={styles.sectionContainer}>
-             <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Mis Equipos</Text>
-                {/* BOTÓN "UNIRSE" MEJORADO */}
-                <Pressable onPress={() => setShowJoinGroupModal(true)} style={styles.joinButtonCapsule}>
-                  <Plus size={14} color={COLORS.primary} strokeWidth={3} />
-                  <Text style={styles.joinButtonText}>Unirse</Text>
-                </Pressable>
-             </View>
-             
-             <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false} 
-                contentContainerStyle={styles.groupsScrollContent} // Padding corregido
-             >
-               {myGroups.length > 0 ? (
-                 myGroups.map((group, index) => (
-                   <Pressable 
-                    key={index} 
-                    style={({pressed}) => [styles.teamCard, pressed && styles.cardPressed]} 
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Mis Equipos</Text>
+              {/* BOTÓN "UNIRSE" MEJORADO */}
+              <Pressable onPress={() => setShowJoinGroupModal(true)} style={styles.joinButtonCapsule}>
+                <Plus size={14} color={COLORS.primary} strokeWidth={3} />
+                <Text style={styles.joinButtonText}>Unirse</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.groupsScrollContent} // Padding corregido
+            >
+              {myGroups.length > 0 ? (
+                myGroups.map((group, index) => (
+                  <Pressable
+                    key={index}
+                    style={({ pressed }) => [styles.teamCard, pressed && styles.cardPressed]}
                     onPress={() => navigation.navigate('GroupDetail', { grupoCodigo: group.codigo, nombreGrupo: group.nombre })}
-                   >
-                     <View style={styles.teamIcon}>
-                        <Users size={20} color={COLORS.primary} />
-                     </View>
-                     <View style={styles.teamInfo}>
-                        <Text style={styles.teamName} numberOfLines={1}>{group.nombre}</Text>
-                        <Text style={styles.teamDesc} numberOfLines={1}>Ver detalles</Text>
-                     </View>
-                     <ChevronRight size={16} color={COLORS.borderColor} />
-                   </Pressable>
-                 ))
-               ) : (
-                 <View style={styles.emptyGroupBox}>
-                   <Text style={styles.emptyGroupText}>Aún no perteneces a ningún equipo.</Text>
-                 </View>
-               )}
-             </ScrollView>
+                  >
+                    <View style={styles.teamIcon}>
+                      <Users size={20} color={COLORS.primary} />
+                    </View>
+                    <View style={styles.teamInfo}>
+                      <Text style={styles.teamName} numberOfLines={1}>{group.nombre}</Text>
+                      <Text style={styles.teamDesc} numberOfLines={1}>Ver detalles</Text>
+                    </View>
+                    <ChevronRight size={16} color={COLORS.borderColor} />
+                  </Pressable>
+                ))
+              ) : (
+                <View style={styles.emptyGroupBox}>
+                  <Text style={styles.emptyGroupText}>Aún no perteneces a ningún equipo.</Text>
+                </View>
+              )}
+            </ScrollView>
           </View>
 
           {/* 3. ACTIVIDAD RECIENTE */}
           <View style={[styles.sectionContainer, { marginTop: 32 }]}>
             <Text style={[styles.sectionTitle, { marginBottom: 18, marginStart: 18 }]}>Actividad Reciente</Text>
-            
+
             {recentResults.length > 0 ? (
               <View style={styles.activityList}>
                 {recentResults.map((res, index) => {
@@ -396,21 +396,25 @@ export default function Dashboard({ navigation }: Props) {
                     <View key={res.id} style={styles.activityItem}>
                       {/* Línea conectora */}
                       {!isLast && <View style={styles.timelineLine} />}
-                      
+
                       <View style={styles.activityIconContainer}>
                         <View style={styles.activityIcon}>
                           <Trophy size={16} color={COLORS.primary} />
                         </View>
                       </View>
-                      
+
                       <View style={styles.activityContent}>
                         <View style={styles.activityHeader}>
                           <Text style={styles.activityTitle} numberOfLines={1}>{res.prueba_asignada?.prueba?.nombre}</Text>
                           <Text style={styles.activityDate}>
-                            {new Date(res.fecha_realizacion).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
+                            {(() => {
+                              if (!res.fecha_realizacion) return "";
+                              const parts = res.fecha_realizacion.split('T')[0].split('-'); // [AAAA, MM, DD]
+                              return `${parts[2]}/${parts[1]}`; // Muestra DD/MM
+                            })()}
                           </Text>
                         </View>
-                        
+
                         <View style={styles.activityResult}>
                           {/* USO DEL FORMATEADOR DE UNIDADES */}
                           <Text style={styles.resultValue}>{res.valor}</Text>
@@ -419,7 +423,7 @@ export default function Dashboard({ navigation }: Props) {
 
                         {res.comentario && res.comentario.length > 0 && (
                           <View style={styles.activityFeedback}>
-                            <MessageSquare size={14} color={COLORS.textMuted} style={{marginTop:2}} />
+                            <MessageSquare size={14} color={COLORS.textMuted} style={{ marginTop: 2 }} />
                             <Text style={styles.activityFeedbackText} numberOfLines={2}>
                               "{res.comentario[0].mensaje}"
                             </Text>
@@ -456,8 +460,8 @@ export default function Dashboard({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   safeArea: { flex: 1 },
-  scrollContent: { paddingBottom: 120 }, 
-  
+  scrollContent: { paddingBottom: 120 },
+
   // Header
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, paddingVertical: 16, marginTop: 8 },
   headerSubtitle: { fontSize: 14, fontWeight: "600", color: COLORS.textMuted },
@@ -470,18 +474,18 @@ const styles = StyleSheet.create({
   // Sections
   sectionContainer: { marginTop: 24 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, marginBottom: 16 },
-  sectionTitle: { fontSize: 20, fontWeight: "800", color: COLORS.textDark},
+  sectionTitle: { fontSize: 20, fontWeight: "800", color: COLORS.textDark },
   countBadge: { backgroundColor: COLORS.danger, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 8 },
   countText: { color: 'white', fontSize: 11, fontWeight: 'bold' },
-  
+
   // BOTÓN UNIRSE MEJORADO
-  joinButtonCapsule: { 
-    flexDirection: 'row', 
-    backgroundColor: COLORS.primaryLight, 
-    paddingHorizontal: 12, 
-    paddingVertical: 6, 
-    borderRadius: 20, 
-    alignItems: 'center', 
+  joinButtonCapsule: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    alignItems: 'center',
     gap: 4,
     borderWidth: 1,
     borderColor: '#bfdbfe'
@@ -507,16 +511,16 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   agendaCardUrgent: {
-    borderColor: '#fecaca', 
-    backgroundColor: '#fff1f2', 
+    borderColor: '#fecaca',
+    backgroundColor: '#fff1f2',
   },
   cardPressed: { transform: [{ scale: 0.98 }], opacity: 0.9 },
-  
+
   agendaHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   agendaIcon: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   urgentTag: { backgroundColor: COLORS.danger, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   urgentText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
-  
+
   agendaTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textDark, lineHeight: 22, marginTop: 8 },
   agendaGroup: { fontSize: 12, color: COLORS.textMuted, fontWeight: '500' },
   agendaFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
@@ -529,14 +533,14 @@ const styles = StyleSheet.create({
 
   // EQUIPOS MEJORADOS
   groupsScrollContent: { paddingHorizontal: 24, paddingBottom: 8 },
-  teamCard: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: COLORS.white, 
-    padding: 12, 
-    borderRadius: 18, 
-    marginRight: 12, 
-    borderWidth: 1, 
+  teamCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    padding: 12,
+    borderRadius: 18,
+    marginRight: 12,
+    borderWidth: 1,
     borderColor: COLORS.borderColor,
     minWidth: 160, // Más ancho para que se vea bien
     shadowColor: COLORS.shadow,
@@ -549,7 +553,7 @@ const styles = StyleSheet.create({
   teamInfo: { flex: 1 },
   teamName: { fontSize: 14, fontWeight: '700', color: COLORS.textDark },
   teamDesc: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
-  
+
   emptyGroupBox: { paddingHorizontal: 24 },
   emptyGroupText: { color: COLORS.textMuted, fontSize: 14, fontStyle: 'italic' },
 
@@ -557,20 +561,20 @@ const styles = StyleSheet.create({
   activityList: { paddingHorizontal: 24 },
   activityItem: { flexDirection: 'row', marginBottom: 24 },
   timelineLine: { position: 'absolute', left: 19, top: 40, bottom: -40, width: 2, backgroundColor: '#e2e8f0', zIndex: -1 },
-  
+
   activityIconContainer: { marginRight: 16, alignItems: 'center' },
-  activityIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: COLORS.white, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor, shadowColor: COLORS.shadow, shadowOffset: {width:0,height:2}, shadowOpacity:0.05, shadowRadius:4, elevation:2 },
-  
-  activityContent: { flex: 1, backgroundColor: COLORS.white, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: COLORS.borderColor, shadowColor: COLORS.shadow, shadowOffset: {width:0, height:2}, shadowOpacity:0.03, shadowRadius:8, elevation:2 },
-  
+  activityIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: COLORS.white, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+
+  activityContent: { flex: 1, backgroundColor: COLORS.white, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: COLORS.borderColor, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 2 },
+
   activityHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  activityTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textDark, flex:1 },
+  activityTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textDark, flex: 1 },
   activityDate: { fontSize: 11, color: COLORS.textMuted, fontWeight: '600', marginLeft: 8 },
-  
+
   activityResult: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
   resultValue: { fontSize: 22, fontWeight: '900', color: COLORS.primary, letterSpacing: -0.5 },
   resultUnit: { fontSize: 12, fontWeight: '700', color: COLORS.textMuted, textTransform: 'uppercase' },
-  
+
   activityFeedback: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f1f5f9', flexDirection: 'row', gap: 8 },
   activityFeedbackText: { flex: 1, fontSize: 13, color: COLORS.textDark, fontStyle: 'italic', lineHeight: 18 },
 
@@ -584,7 +588,7 @@ const styles = StyleSheet.create({
   navIconActive: { backgroundColor: COLORS.primaryLight, paddingHorizontal: 20, paddingVertical: 6, borderRadius: 20, marginBottom: 4 },
   navTextActive: { fontSize: 10, color: COLORS.primary, fontWeight: 'bold' },
   navTextInactive: { fontSize: 10, color: COLORS.textMuted, fontWeight: '500', marginTop: 4 },
-  
+
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
   modalBackdrop: { ...StyleSheet.absoluteFillObject },
   modalContent: { backgroundColor: COLORS.white, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40 },

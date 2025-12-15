@@ -14,11 +14,11 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { 
-  ArrowLeft, 
-  Search, 
-  Calendar, 
-  Trophy, 
+import {
+  ArrowLeft,
+  Search,
+  Calendar,
+  Trophy,
   MessageSquare,
   ClipboardList,
   TrendingUp,
@@ -70,14 +70,14 @@ export default function MisPruebas({ navigation }: Props) {
   const formatUnit = (raw: string | null) => {
     if (!raw) return '';
     const r = raw.toLowerCase();
-    
+
     if (r === 'time_min' || r.includes('minutos') || r.includes('minute')) return 'Min';
     if (r === 'time_sec' || r.includes('segundos') || r.includes('second')) return 'Seg';
     if (r.includes('rep')) return 'Reps';
     if (r.includes('kilo') || r.includes('kg')) return 'Kg';
     if (r.includes('metr')) return 'm';
-    
-    return raw; 
+
+    return raw;
   };
 
   // 1. Cargar Historial
@@ -136,10 +136,10 @@ export default function MisPruebas({ navigation }: Props) {
   // 3. Render Item (Tarjeta)
   const renderItem = ({ item }: { item: any }) => {
     const hasComment = item.comentario && item.comentario.length > 0;
-    
+
     return (
-      <Pressable 
-        style={({pressed}) => [styles.card, pressed && styles.cardPressed]}
+      <Pressable
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
         onPress={() => openDetail(item)}
       >
         <View style={styles.cardHeader}>
@@ -153,11 +153,12 @@ export default function MisPruebas({ navigation }: Props) {
             <View style={styles.dateRow}>
               <Calendar size={12} color={COLORS.textMuted} style={{ marginRight: 4 }} />
               <Text style={styles.testDate}>
-                {new Date(item.fecha_realizacion).toLocaleDateString()}
+                {/* Cortamos el string y lo invertimos manualmente */}
+                {item.fecha_realizacion ? item.fecha_realizacion.split('T')[0].split('-').reverse().join('/') : ''}
               </Text>
             </View>
           </View>
-          
+
           <View style={styles.badgeContainer}>
             <Text style={styles.badgeValue}>{item.valor}</Text>
             {/* UNIDAD FORMATEADA */}
@@ -182,22 +183,22 @@ export default function MisPruebas({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
+
       {/* MODAL DE DETALLE */}
-      <Modal 
-        animationType="slide" 
-        transparent={true} 
-        visible={showDetailModal} 
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showDetailModal}
         onRequestClose={() => setShowDetailModal(false)}
       >
         <View style={styles.modalOverlay}>
           <Pressable style={styles.modalBackdrop} onPress={() => setShowDetailModal(false)} />
           <View style={styles.modalContent}>
-            
+
             {/* Header Modal */}
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleContainer}>
-                <Target size={20} color={COLORS.primary} style={{marginRight: 8}}/>
+                <Target size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
                 <Text style={styles.modalTitle}>Detalle del Resultado</Text>
               </View>
               <Pressable onPress={() => setShowDetailModal(false)} style={styles.closeButton}>
@@ -206,45 +207,45 @@ export default function MisPruebas({ navigation }: Props) {
             </View>
 
             {selectedResult && (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 20}}>
-                
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+
                 {/* Info Principal */}
                 <View style={styles.detailHero}>
                   <Text style={styles.detailTestName}>
                     {selectedResult.prueba_asignada?.prueba?.nombre}
                   </Text>
                   <View style={styles.detailDateBadge}>
-                    <Clock size={14} color={COLORS.textMuted} style={{marginRight:4}} />
+                    <Clock size={14} color={COLORS.textMuted} style={{ marginRight: 4 }} />
                     <Text style={styles.detailDateText}>
-                      Realizado el {new Date(selectedResult.fecha_realizacion).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                      Realizado el {selectedResult.fecha_realizacion ? selectedResult.fecha_realizacion.split('T')[0].split('-').reverse().join('/') : ''}
                     </Text>
                   </View>
                 </View>
 
                 {/* Resultado Grande */}
                 <View style={styles.bigResultBox}>
-                   <Text style={styles.bigResultLabel}>Tu Marca</Text>
-                   <Text style={styles.bigResultValue}>
-                     {selectedResult.valor} 
-                     {/* UNIDAD FORMATEADA */}
-                     <Text style={styles.bigResultUnit}> {formatUnit(selectedResult.prueba_asignada?.prueba?.tipo_metrica)}</Text>
-                   </Text>
+                  <Text style={styles.bigResultLabel}>Tu Marca</Text>
+                  <Text style={styles.bigResultValue}>
+                    {selectedResult.valor}
+                    {/* UNIDAD FORMATEADA */}
+                    <Text style={styles.bigResultUnit}> {formatUnit(selectedResult.prueba_asignada?.prueba?.tipo_metrica)}</Text>
+                  </Text>
                 </View>
 
                 {/* Descripción Prueba */}
                 <View style={styles.infoSection}>
-                   <Text style={styles.infoLabel}>Sobre la prueba</Text>
-                   <Text style={styles.infoText}>
-                     {selectedResult.prueba_asignada?.prueba?.descripcion || "Sin descripción disponible."}
-                   </Text>
+                  <Text style={styles.infoLabel}>Sobre la prueba</Text>
+                  <Text style={styles.infoText}>
+                    {selectedResult.prueba_asignada?.prueba?.descripcion || "Sin descripción disponible."}
+                  </Text>
                 </View>
 
                 {/* Comentario Completo */}
                 {selectedResult.comentario && selectedResult.comentario.length > 0 ? (
                   <View style={styles.commentBox}>
-                    <View style={{flexDirection:'row', alignItems:'center', marginBottom:8}}>
-                       <MessageSquare size={18} color={COLORS.primary} style={{marginRight:6}}/>
-                       <Text style={styles.commentLabel}>Observación del Entrenador</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                      <MessageSquare size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
+                      <Text style={styles.commentLabel}>Observación del Entrenador</Text>
                     </View>
                     <Text style={styles.commentText}>
                       {selectedResult.comentario[0].mensaje}
@@ -260,21 +261,21 @@ export default function MisPruebas({ navigation }: Props) {
             )}
 
             <Pressable onPress={() => setShowDetailModal(false)} style={styles.btnCerrar}>
-               <Text style={styles.btnCerrarText}>Cerrar</Text>
+              <Text style={styles.btnCerrarText}>Cerrar</Text>
             </Pressable>
           </View>
         </View>
       </Modal>
 
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        
+
         {/* HEADER */}
         <View style={styles.header}>
           <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
             <ArrowLeft size={24} color={COLORS.textDark} />
           </Pressable>
           <Text style={styles.headerTitle}>Historial</Text>
-          <View style={{ width: 40 }} /> 
+          <View style={{ width: 40 }} />
         </View>
 
         {/* SEARCH */}
@@ -348,7 +349,7 @@ export default function MisPruebas({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  
+
   // Header
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 16 },
   backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.white, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor },
@@ -371,7 +372,7 @@ const styles = StyleSheet.create({
   badgeContainer: { alignItems: 'flex-end', backgroundColor: COLORS.primaryLight, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
   badgeValue: { fontSize: 16, fontWeight: '800', color: COLORS.primary },
   badgeUnit: { fontSize: 10, color: COLORS.textMuted, fontWeight: '700', textTransform: 'uppercase' },
-  
+
   feedbackPreview: { marginTop: 12, backgroundColor: '#f1f5f9', padding: 10, borderRadius: 12, flexDirection: 'row', gap: 8 },
   feedbackTextPreview: { flex: 1, fontSize: 13, color: COLORS.textDark, fontStyle: 'italic', lineHeight: 18 },
 
@@ -396,7 +397,7 @@ const styles = StyleSheet.create({
   modalTitleContainer: { flexDirection: 'row', alignItems: 'center' },
   modalTitle: { fontSize: 20, fontWeight: '800', color: COLORS.textDark },
   closeButton: { padding: 8, backgroundColor: COLORS.background, borderRadius: 20 },
-  
+
   detailHero: { alignItems: 'center', marginBottom: 24 },
   detailTestName: { fontSize: 24, fontWeight: '800', color: COLORS.textDark, textAlign: 'center', marginBottom: 8 },
   detailDateBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },

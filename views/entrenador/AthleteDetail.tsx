@@ -53,7 +53,7 @@ interface AthleteProfile {
 
 export default function AthleteDetail({ navigation, route }: Props) {
     const { user } = useAuth();
-    const { athlete } = route.params || {}; 
+    const { athlete } = route.params || {};
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -69,14 +69,14 @@ export default function AthleteDetail({ navigation, route }: Props) {
     const formatUnit = (raw: string | null) => {
         if (!raw) return '';
         const r = raw.toLowerCase();
-        
+
         if (r === 'time_min' || r.includes('minutos') || r.includes('minute')) return 'Min';
         if (r === 'time_sec' || r.includes('segundos') || r.includes('second')) return 'Seg';
         if (r.includes('rep')) return 'Reps';
         if (r.includes('kilo') || r.includes('kg')) return 'Kg';
         if (r.includes('metr')) return 'm';
-        
-        return raw; 
+
+        return raw;
     };
 
     // ----------------------------------------------------------------------
@@ -146,7 +146,7 @@ export default function AthleteDetail({ navigation, route }: Props) {
 
             if (historyError) throw historyError;
 
-            const completedAssignmentIds = new Set(); 
+            const completedAssignmentIds = new Set();
             const historyList: TestItem[] = [];
 
             if (historyData) {
@@ -166,7 +166,7 @@ export default function AthleteDetail({ navigation, route }: Props) {
                             status: 'completed',
                             result: res.valor,
                             // APLICAMOS LA CONVERSIÓN DE UNIDAD AQUÍ
-                            score: formatUnit(p.tipo_metrica) 
+                            score: formatUnit(p.tipo_metrica)
                         });
                     }
                 });
@@ -196,12 +196,12 @@ export default function AthleteDetail({ navigation, route }: Props) {
             if (assignmentsData) {
                 assignmentsData.forEach((item: any) => {
                     const assign = item.prueba_asignada;
-                    
+
                     // FILTRO 1: Creada por mí
                     // FILTRO 2: NO está en la lista de completadas
-                    if (assign && 
-                        assign.prueba?.entrenador_no_documento === coachId && 
-                        !completedAssignmentIds.has(assign.id) 
+                    if (assign &&
+                        assign.prueba?.entrenador_no_documento === coachId &&
+                        !completedAssignmentIds.has(assign.id)
                     ) {
                         pendingList.push({
                             assignmentId: assign.id,
@@ -239,7 +239,7 @@ export default function AthleteDetail({ navigation, route }: Props) {
     const handleRegisterResult = (test: TestItem) => {
         navigation.navigate('SendFeedback', {
             result: {
-                athleteId: parseInt(athlete.id), 
+                athleteId: parseInt(athlete.id),
                 athleteName: profile.name,
                 assignmentId: test.assignmentId,
                 test: test.testName,
@@ -332,14 +332,14 @@ export default function AthleteDetail({ navigation, route }: Props) {
                                             <View style={{ flex: 1 }}>
                                                 <Text style={styles.cardTitle}>{item.testName}</Text>
                                                 <Text style={styles.cardSubtitle}>
-                                                    Vence: {item.deadline ? new Date(item.deadline).toLocaleDateString() : 'Sin fecha'}
+                                                    Vence: {item.deadline ? item.deadline.split('T')[0].split('-').reverse().join('/') : 'Sin fecha'}
                                                 </Text>
                                             </View>
                                         </View>
 
                                         <Pressable
                                             onPress={() => handleRegisterResult(item)}
-                                            style={({pressed}) => [styles.actionButton, pressed && { opacity: 0.8 }]}
+                                            style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.8 }]}
                                         >
                                             <Text style={styles.actionButtonText}>Evaluar</Text>
                                         </Pressable>
@@ -363,7 +363,9 @@ export default function AthleteDetail({ navigation, route }: Props) {
                                             </View>
                                             <View>
                                                 <Text style={styles.cardTitle}>{item.testName}</Text>
-                                                <Text style={styles.cardSubtitle}>{new Date(item.date).toLocaleDateString()}</Text>
+                                                <Text style={styles.cardSubtitle}>
+                                                    {item.date ? item.date.split('T')[0].split('-').reverse().join('/') : ''}
+                                                </Text>
                                             </View>
                                         </View>
                                         <View style={{ alignItems: 'flex-end' }}>
@@ -409,13 +411,13 @@ const styles = StyleSheet.create({
         borderColor: COLORS.borderColor,
     },
     statusBadge: {
-        backgroundColor: '#DCFCE7', 
+        backgroundColor: '#DCFCE7',
         paddingHorizontal: 12,
         paddingVertical: 4,
         borderRadius: 20,
     },
     statusText: {
-        color: '#15803D', 
+        color: '#15803D',
         fontSize: 10,
         fontWeight: '800',
         textTransform: 'uppercase',
@@ -428,7 +430,7 @@ const styles = StyleSheet.create({
     avatarLarge: {
         width: 64,
         height: 64,
-        backgroundColor: '#DBEAFE', 
+        backgroundColor: '#DBEAFE',
         borderRadius: 32,
         justifyContent: 'center',
         alignItems: 'center',
@@ -471,7 +473,7 @@ const styles = StyleSheet.create({
     statLabel: {
         fontSize: 10,
         fontWeight: '800',
-        color: '#94A3B8', 
+        color: '#94A3B8',
         textTransform: 'uppercase',
         marginBottom: 4,
     },
@@ -496,7 +498,7 @@ const styles = StyleSheet.create({
         borderRadius: 8,
     },
     activeTab: {
-        backgroundColor: '#EFF6FF', 
+        backgroundColor: '#EFF6FF',
     },
     tabText: {
         fontSize: 14,

@@ -13,18 +13,18 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { 
-  ArrowLeft, 
-  ChevronDown, 
-  Trophy, 
-  TrendingUp, 
-  Activity, 
+import {
+  ArrowLeft,
+  ChevronDown,
+  Trophy,
+  TrendingUp,
+  Activity,
   Calendar,
   X,
   BarChart3,
   CheckCircle2
 } from "lucide-react-native";
-import { LineChart } from "react-native-chart-kit"; 
+import { LineChart } from "react-native-chart-kit";
 
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
@@ -55,11 +55,11 @@ export default function StatsScreen({ navigation }: Props) {
 
   // Estados
   const [loading, setLoading] = useState(true);
-  const [testOptions, setTestOptions] = useState<any[]>([]); 
-  const [selectedTest, setSelectedTest] = useState<any>(null); 
-  const [chartData, setChartData] = useState<any>(null); 
-  const [stats, setStats] = useState({ best: 0, last: 0, avg: 0, unit: '' }); 
-  const [historyList, setHistoryList] = useState<any[]>([]); 
+  const [testOptions, setTestOptions] = useState<any[]>([]);
+  const [selectedTest, setSelectedTest] = useState<any>(null);
+  const [chartData, setChartData] = useState<any>(null);
+  const [stats, setStats] = useState({ best: 0, last: 0, avg: 0, unit: '' });
+  const [historyList, setHistoryList] = useState<any[]>([]);
 
   // Modal Selector
   const [showSelector, setShowSelector] = useState(false);
@@ -72,14 +72,14 @@ export default function StatsScreen({ navigation }: Props) {
   const formatUnit = (raw: string | null) => {
     if (!raw) return '';
     const r = raw.toLowerCase();
-    
+
     if (r === 'time_min' || r.includes('minutos') || r.includes('minute')) return 'Min';
     if (r === 'time_sec' || r.includes('segundos') || r.includes('second')) return 'Seg';
     if (r.includes('rep')) return 'Reps';
     if (r.includes('kilo') || r.includes('kg')) return 'Kg';
     if (r.includes('metr')) return 'm';
-    
-    return raw; 
+
+    return raw;
   };
 
   // 1. Cargar pruebas disponibles
@@ -146,7 +146,7 @@ export default function StatsScreen({ navigation }: Props) {
         `)
         .eq('atleta_no_documento', documento)
         .eq('prueba_asignada.prueba_id', testObj.id)
-        .order('fecha_realizacion', { ascending: true }); 
+        .order('fecha_realizacion', { ascending: true });
 
       if (error) throw error;
 
@@ -170,12 +170,14 @@ export default function StatsScreen({ navigation }: Props) {
 
     const numericValues = data.map(d => parseFloat(d.valor) || 0);
     const labels = data.map(d => {
-        const date = new Date(d.fecha_realizacion);
-        return `${date.getDate()}/${date.getMonth() + 1}`; 
+      // Tomamos el string "2025-12-20", hacemos split y usamos dia/mes directos
+      if (!d.fecha_realizacion) return "";
+      const parts = d.fecha_realizacion.split('T')[0].split('-'); // ["2025", "12", "20"]
+      return `${parts[2]}/${parts[1]}`; // Retorna "20/12"
     });
 
     const sliceIndex = Math.max(0, numericValues.length - 6);
-    
+
     setChartData({
       labels: labels.slice(sliceIndex),
       datasets: [{ data: numericValues.slice(sliceIndex) }]
@@ -207,9 +209,9 @@ export default function StatsScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
+
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        
+
         {/* HEADER */}
         <View style={styles.header}>
           <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -224,13 +226,13 @@ export default function StatsScreen({ navigation }: Props) {
           {/* 1. SELECTOR */}
           <View style={styles.selectorContainer}>
             <Text style={styles.label}>Métrica a visualizar</Text>
-            <Pressable 
+            <Pressable
               onPress={() => setShowSelector(true)}
-              style={({pressed}) => [styles.selectorButton, pressed && styles.selectorPressed]}
+              style={({ pressed }) => [styles.selectorButton, pressed && styles.selectorPressed]}
             >
               <View style={styles.selectorContent}>
                 <View style={styles.iconCircle}>
-                    <BarChart3 size={20} color={COLORS.primary} />
+                  <BarChart3 size={20} color={COLORS.primary} />
                 </View>
                 <Text style={styles.selectorText}>
                   {selectedTest ? selectedTest.nombre : "Seleccionar Prueba"}
@@ -245,15 +247,15 @@ export default function StatsScreen({ navigation }: Props) {
               {/* 2. GRÁFICA */}
               <View style={styles.chartCard}>
                 <View style={styles.chartHeader}>
-                    <Text style={styles.chartTitle}>Tendencia</Text>
-                    <View style={styles.unitBadge}>
-                        <Text style={styles.unitText}>{stats.unit}</Text>
-                    </View>
+                  <Text style={styles.chartTitle}>Tendencia</Text>
+                  <View style={styles.unitBadge}>
+                    <Text style={styles.unitText}>{stats.unit}</Text>
+                  </View>
                 </View>
-                
+
                 <LineChart
                   data={chartData}
-                  width={SCREEN_WIDTH - 80} 
+                  width={SCREEN_WIDTH - 80}
                   height={220}
                   yAxisLabel=""
                   yAxisSuffix=""
@@ -276,35 +278,35 @@ export default function StatsScreen({ navigation }: Props) {
               <View style={styles.statsRow}>
                 {/* Mejor Marca */}
                 <View style={[styles.statCard, styles.bestCard]}>
-                    <View style={[styles.iconBg, styles.bestIconBg]}>
-                        <Trophy size={18} color="#16a34a" />
-                    </View>
-                    <Text style={styles.statLabel}>Récord</Text>
-                    <Text style={[styles.statValue, { color: '#16a34a' }]}>
-                        {stats.best} <Text style={styles.statUnitSmall}>{stats.unit}</Text>
-                    </Text>
+                  <View style={[styles.iconBg, styles.bestIconBg]}>
+                    <Trophy size={18} color="#16a34a" />
+                  </View>
+                  <Text style={styles.statLabel}>Récord</Text>
+                  <Text style={[styles.statValue, { color: '#16a34a' }]}>
+                    {stats.best} <Text style={styles.statUnitSmall}>{stats.unit}</Text>
+                  </Text>
                 </View>
 
                 {/* Último */}
                 <View style={styles.statCard}>
-                    <View style={styles.iconBg}>
-                        <Activity size={18} color={COLORS.primary} />
-                    </View>
-                    <Text style={styles.statLabel}>Último</Text>
-                    <Text style={styles.statValue}>
-                        {stats.last} <Text style={styles.statUnitSmall}>{stats.unit}</Text>
-                    </Text>
+                  <View style={styles.iconBg}>
+                    <Activity size={18} color={COLORS.primary} />
+                  </View>
+                  <Text style={styles.statLabel}>Último</Text>
+                  <Text style={styles.statValue}>
+                    {stats.last} <Text style={styles.statUnitSmall}>{stats.unit}</Text>
+                  </Text>
                 </View>
 
                 {/* Promedio */}
                 <View style={styles.statCard}>
-                    <View style={styles.iconBg}>
-                        <TrendingUp size={18} color={COLORS.textMuted} />
-                    </View>
-                    <Text style={styles.statLabel}>Promedio</Text>
-                    <Text style={[styles.statValue, { color: COLORS.textMuted }]}>
-                        {stats.avg} <Text style={styles.statUnitSmall}>{stats.unit}</Text>
-                    </Text>
+                  <View style={styles.iconBg}>
+                    <TrendingUp size={18} color={COLORS.textMuted} />
+                  </View>
+                  <Text style={styles.statLabel}>Promedio</Text>
+                  <Text style={[styles.statValue, { color: COLORS.textMuted }]}>
+                    {stats.avg} <Text style={styles.statUnitSmall}>{stats.unit}</Text>
+                  </Text>
                 </View>
               </View>
 
@@ -312,31 +314,31 @@ export default function StatsScreen({ navigation }: Props) {
               <View style={styles.historySection}>
                 <Text style={styles.sectionTitle}>Historial Detallado</Text>
                 {historyList.map((item, index) => (
-                    <View key={index} style={styles.historyRow}>
-                        <View style={styles.historyLeft}>
-                            <View style={styles.calendarIcon}>
-                                <Calendar size={14} color={COLORS.textMuted} />
-                            </View>
-                            <Text style={styles.historyDate}>
-                                {new Date(item.fecha_realizacion).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}
-                            </Text>
-                        </View>
-                        <View style={styles.historyRight}>
-                            <Text style={styles.historyValue}>{item.valor}</Text>
-                            <Text style={styles.historyUnit}>{stats.unit}</Text>
-                        </View>
+                  <View key={index} style={styles.historyRow}>
+                    <View style={styles.historyLeft}>
+                      <View style={styles.calendarIcon}>
+                        <Calendar size={14} color={COLORS.textMuted} />
+                      </View>
+                      <Text style={styles.historyDate}>
+                        {item.fecha_realizacion ? item.fecha_realizacion.split('T')[0].split('-').reverse().join('/') : ''}
+                      </Text>
                     </View>
+                    <View style={styles.historyRight}>
+                      <Text style={styles.historyValue}>{item.valor}</Text>
+                      <Text style={styles.historyUnit}>{stats.unit}</Text>
+                    </View>
+                  </View>
                 ))}
               </View>
             </>
           ) : (
             <View style={styles.emptyState}>
-                <BarChart3 size={48} color={COLORS.borderColor} />
-                <Text style={styles.emptyText}>
-                    {testOptions.length > 0 
-                      ? "Selecciona una prueba para analizar tu rendimiento." 
-                      : "Aún no tienes registros suficientes para generar estadísticas."}
-                </Text>
+              <BarChart3 size={48} color={COLORS.borderColor} />
+              <Text style={styles.emptyText}>
+                {testOptions.length > 0
+                  ? "Selecciona una prueba para analizar tu rendimiento."
+                  : "Aún no tienes registros suficientes para generar estadísticas."}
+              </Text>
             </View>
           )}
 
@@ -344,39 +346,39 @@ export default function StatsScreen({ navigation }: Props) {
 
         {/* --- MODAL SELECTOR --- */}
         <Modal visible={showSelector} transparent animationType="fade" onRequestClose={() => setShowSelector(false)}>
-            <Pressable style={styles.modalOverlay} onPress={() => setShowSelector(false)}>
-                <View style={styles.modalContent}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Seleccionar Prueba</Text>
-                        <Pressable onPress={() => setShowSelector(false)} style={styles.closeButton}>
-                            <X size={20} color={COLORS.textMuted} />
-                        </Pressable>
-                    </View>
-                    <FlatList 
-                        data={testOptions}
-                        keyExtractor={(item) => item.id.toString()}
-                        renderItem={({item}) => (
-                            <Pressable 
-                                onPress={() => handleSelectTest(item)}
-                                style={[
-                                    styles.optionItem,
-                                    selectedTest?.id === item.id && styles.optionSelected
-                                ]}
-                            >
-                                <Text style={[
-                                    styles.optionText,
-                                    selectedTest?.id === item.id && styles.optionTextSelected
-                                ]}>{item.nombre}</Text>
-                                {selectedTest?.id === item.id && (
-                                    <View style={styles.checkIcon}>
-                                        <CheckCircle2 size={18} color={COLORS.primary} />
-                                    </View>
-                                )}
-                            </Pressable>
-                        )}
-                    />
-                </View>
-            </Pressable>
+          <Pressable style={styles.modalOverlay} onPress={() => setShowSelector(false)}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Seleccionar Prueba</Text>
+                <Pressable onPress={() => setShowSelector(false)} style={styles.closeButton}>
+                  <X size={20} color={COLORS.textMuted} />
+                </Pressable>
+              </View>
+              <FlatList
+                data={testOptions}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={({ item }) => (
+                  <Pressable
+                    onPress={() => handleSelectTest(item)}
+                    style={[
+                      styles.optionItem,
+                      selectedTest?.id === item.id && styles.optionSelected
+                    ]}
+                  >
+                    <Text style={[
+                      styles.optionText,
+                      selectedTest?.id === item.id && styles.optionTextSelected
+                    ]}>{item.nombre}</Text>
+                    {selectedTest?.id === item.id && (
+                      <View style={styles.checkIcon}>
+                        <CheckCircle2 size={18} color={COLORS.primary} />
+                      </View>
+                    )}
+                  </Pressable>
+                )}
+              />
+            </View>
+          </Pressable>
         </Modal>
 
       </SafeAreaView>
@@ -389,7 +391,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   scrollContent: { paddingHorizontal: 24, paddingBottom: 40 },
-  
+
   // Header
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 16 },
   backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.white, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor },
@@ -405,7 +407,7 @@ const styles = StyleSheet.create({
   selectorText: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark },
 
   // Chart
-  chartCard: { backgroundColor: COLORS.white, borderRadius: 24, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor, marginBottom: 24, shadowColor: COLORS.shadow, shadowOffset: {width:0, height:2}, shadowOpacity:0.03, shadowRadius:8, elevation:2 },
+  chartCard: { backgroundColor: COLORS.white, borderRadius: 24, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor, marginBottom: 24, shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 2 },
   chartHeader: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 12, alignItems: 'center' },
   chartTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark },
   unitBadge: { backgroundColor: COLORS.background, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
@@ -443,7 +445,7 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark },
   closeButton: { padding: 8, backgroundColor: COLORS.background, borderRadius: 20 },
-  
+
   optionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.background },
   optionSelected: { backgroundColor: COLORS.primaryLight, marginHorizontal: -24, paddingHorizontal: 24 },
   optionText: { fontSize: 16, color: COLORS.textDark, fontWeight: '500' },

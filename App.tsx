@@ -12,6 +12,9 @@ import AuthStack from "./navigation/AuthStack";
 import AprendizStack from "./navigation/AprendizStack";
 import EntrenadorStack from "./navigation/EntrenadorStack";
 
+import { formatDate } from './lib/formatDate'
+
+
 const AppNavigator = () => {
   const { role } = useAuth(); 
 

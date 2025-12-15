@@ -224,7 +224,7 @@ export default function MyProfile({ navigation }: Props) {
           peso: weightVal || null,
           estatura: heightVal || null,
           // Calculamos IMC si hay datos
-          imc: (weightVal && heightVal) ? (weightVal / ((heightVal/100) * (heightVal/100))).toFixed(2) : null,
+          imc: (weightVal && heightVal) ? (weightVal / ((heightVal / 100) * (heightVal / 100))).toFixed(2) : null,
           fecha_registro: new Date().toISOString()
         });
 
@@ -422,7 +422,8 @@ export default function MyProfile({ navigation }: Props) {
                           <Calendar size={20} color={COLORS.textLight} style={styles.inputIcon} />
                           {birthDate ? (
                             <Text style={[styles.selectText, styles.textDark]}>
-                              {birthDate.toLocaleDateString()}
+                              {/* Convertimos el objeto Date manualmente a string local */}
+                              {birthDate.toISOString().split('T')[0].split('-').reverse().join('/')}
                             </Text>
                           ) : (
                             <Text style={[styles.selectText, styles.textLight]}>
@@ -487,7 +488,7 @@ export default function MyProfile({ navigation }: Props) {
             <Pressable style={styles.modalOverlay} onPress={() => setShowGenderModal(false)}>
               <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
                 <View style={styles.modalHandle} />
-                
+
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Selecciona tu Género</Text>
                   <Pressable onPress={() => setShowGenderModal(false)} style={styles.modalCloseButton}>

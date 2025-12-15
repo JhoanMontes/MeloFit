@@ -89,9 +89,9 @@ export default function GroupDetail({ navigation, route }: Props) {
   }>({ visible: false, title: "", message: "", type: "info" });
 
   const showAlert = (
-    title: string, 
-    message: string, 
-    type: AlertType = "info", 
+    title: string,
+    message: string,
+    type: AlertType = "info",
     onConfirm?: () => void,
     buttonText: string = "Entendido",
     cancelText: string = "Cancelar"
@@ -266,7 +266,7 @@ export default function GroupDetail({ navigation, route }: Props) {
   // --- LÓGICA DE SOFT DELETE (ARCHIVAR) ---
   const handleDeleteGroup = () => {
     setShowOptionsModal(false);
-    
+
     showAlert(
       "¿Archivar Grupo?",
       "El grupo se ocultará de tu lista, pero el historial de los atletas se conservará. ¿Deseas continuar?",
@@ -274,7 +274,7 @@ export default function GroupDetail({ navigation, route }: Props) {
       async () => {
         try {
           setLoadingAction(true);
-          
+
           // INTENTO 1: SOFT DELETE (Recomendado)
           // Asumimos que ya creaste la columna 'activo' en la BD
           const { error } = await supabase
@@ -283,27 +283,27 @@ export default function GroupDetail({ navigation, route }: Props) {
             .eq('codigo', group.codigo);
 
           if (error) {
-             // Si falla (ej: columna no existe), intentamos HARD DELETE y capturamos el constraint
-             if (error.code === 'PGRST204' || error.message.includes('column')) {
-                 throw new Error("Columna 'activo' no configurada en DB. Contacta soporte.");
-             }
-             throw error;
+            // Si falla (ej: columna no existe), intentamos HARD DELETE y capturamos el constraint
+            if (error.code === 'PGRST204' || error.message.includes('column')) {
+              throw new Error("Columna 'activo' no configurada en DB. Contacta soporte.");
+            }
+            throw error;
           }
 
           navigation.goBack();
 
         } catch (error: any) {
           console.error(error);
-          
+
           // Manejo específico del error de Foreign Key (Constraint)
           if (error.code === '23503' || error.message?.includes('foreign key constraint')) {
-             showAlert(
-               "No se puede eliminar", 
-               "Este grupo tiene historial de pruebas vinculado. No se puede eliminar permanentemente para proteger los datos de los atletas.", 
-               "error"
-             );
+            showAlert(
+              "No se puede eliminar",
+              "Este grupo tiene historial de pruebas vinculado. No se puede eliminar permanentemente para proteger los datos de los atletas.",
+              "error"
+            );
           } else {
-             showAlert("Error", error.message || "No se pudo archivar el grupo.", "error");
+            showAlert("Error", error.message || "No se pudo archivar el grupo.", "error");
           }
         }
         finally { setLoadingAction(false); }
@@ -507,13 +507,15 @@ export default function GroupDetail({ navigation, route }: Props) {
                       <View>
                         <Text style={styles.cardTitle}>{test.testName}</Text>
                         <Text style={styles.cardSubtitle}>
-                          Asignada: {new Date(test.createdAt).toLocaleDateString()}
+                          Asignada: {test.createdAt ? test.createdAt.split('T')[0].split('-').reverse().join('/') : ''}
                         </Text>
                       </View>
                     </View>
                     {test.deadline && (
                       <View style={styles.deadlineBadge}>
-                        <Text style={styles.deadlineText}>Vence: {new Date(test.deadline).toLocaleDateString()}</Text>
+                        <Text style={styles.deadlineText}>
+                          Vence: {test.deadline ? test.deadline.split('T')[0].split('-').reverse().join('/') : ''}
+                        </Text>
                       </View>
                     )}
                   </Pressable>

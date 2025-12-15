@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "MeloFit",
+    "name": "SportSync",
     "slug": "MeloFit",
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
@@ -30,7 +30,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.soulk17.MeloFit"
+      "package": "com.soulk17.SportSync"
     },
     "extra": {
       "eas": {
